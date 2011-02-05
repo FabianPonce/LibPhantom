@@ -1,0 +1,1349 @@
+// Dependencies
+include "TriggerLibs/NativeLib"
+include "TriggerLibs/LibertyLib"
+
+// Max supported players
+const int c_phantomMaxPlayers		= 16;
+
+// Human-readable, these may be changed. 
+// A faction alliance mask is a list of all factions that this player is "aligned" to.
+const int c_phantomAllianceMask_Good 	= (1 << 0);
+const int c_phantomAllianceMask_Evil 	= (1 << 1);
+
+include "Phantom/MapConstants"
+
+// A full mask for a signed Galaxy integer.
+// Represents every possible combination of player roles in c_phantomRole<*>
+const int c_phantomRoleMask_All				= 0x7fffffff; // (2^31 max for signed int)
+
+struct PhantomRole
+{
+	string roleName;	// The UI name for this role
+	string pluralRoleName;	// The plural version of the name for this role
+	string colorCode;	// Special color coding for this role, if any
+	string objective;		// Short mission statement
+	string description;		// Long mission statement (used for tips)
+	
+	int allianceMask;	// Mask of this role's allies
+	
+	int minCount;			// Absolute minimum number of this role. Unrelated to game role.
+	int maxCount;			// Absolute maximum number of this role. Unrelated to game role. (0 to ignore)
+	
+	int populationCap;	// Roles current population cap
+	
+	fixed killBounty;	// Bounty as a percent of killed unit's cost to give to player. Ex: 0.10 = 10% of killed unit cost
+	
+	int incomeMinerals;	// Minerals received per second
+	int incomeGas;		// Gas received per second
+	
+	trigger onStrengthen;	// This trigger is called when a player strengthens.
+	int periodicStrengthenTimer;	// The timer this role strengthens on
+	int mineralIncomeStrengthenAmt;	// Amounts to strengthen by (income)
+	int gasIncomeStrengthenAmt;		// Amounts to strengthen by (income)
+	int supplyIncreaseAmt;	// Amount to increase supply by when strengthen occurs.
+	
+	trigger onDeath;		// This trigger called when a player of this role dies.
+	
+	int revealAlliesAt;		// Seconds in game to reveal allies at. (-1 to ignore option)
+	bool broadcastReveal;	// Whether or not to reveal that this role's allies have been revealed at revealAlliesAt above.
+	
+	int impersonateRole;	// The ID of a role to impersonate. Your true role will only be revealed once you die. (-1 to disable)
+	
+	// Internal use
+	int myMask;			// Role mask for this role
+	bool blockStrengthen;	// Whether or not this role's strengthen is disabled.
+};
+
+PhantomRole[c_phantomRole_MAX] libPhantom_Roles;
+
+struct PhantomGameMode
+{
+	string modeName;	// The name of this game mode
+	string plainName;	// Undecorated name of this game mode.
+	string shortDescription;	// Very brief description
+	string description; // Long description
+	
+	int participatingRoles;	// A mask of the roles that players can be put into when this mode is selected.
+	
+	trigger onModeSelected;	// Called when this mode is selected.
+	trigger onPeriodic;		// Called every second, or if null, never.
+	
+	// Internal use
+	int dialogControl;
+	int votes;
+};
+
+PhantomGameMode[c_phantomGameMode_MAX] libPhantom_GameModes;
+
+
+struct PhantomGameVariant
+{
+	string name; // Specific name: Ex "Quick Start"
+	string tooltip;
+	
+	trigger onActivate;
+	
+	// Internal use
+	int dialogControl;
+	int votes;
+};
+
+const int c_phantomMaxVariantsPerGroup = 5;
+struct PhantomGameVariantGroup
+{
+	string name;
+	PhantomGameVariant[c_phantomMaxVariantsPerGroup] variants;
+};
+
+PhantomGameVariant[c_phantomGameVariant_MAX] libPhantom_StandaloneGameVariants;
+PhantomGameVariantGroup[c_phantomGameVariantGroup_MAX] libPhantom_GameVariants;
+
+const int c_phantomWorkerPingTime = 15;
+
+// Map Flags
+const int c_phantomMapFlag_NoSharedVision = (1 << 0);
+
+include "Phantom/MapConfiguration"
+
+
+//--------------------------------
+// GAME RUNTIME DATA
+//--------------------------------
+int libPhantom_MapFlags;
+int libPhantom_GameModeCurrent;
+int[c_phantomMaxPlayers] libPhantom_PlayerRoles;
+bool[c_phantomMaxPlayers] libPhantom_IsAlive;
+int libPhantom_GameTime;
+bool libPhantom_GameStarted;
+int[3+c_phantomGameVariantGroup_MAX] libPhantom_VoteDialogs;
+bool[c_phantomMaxPlayers] libPhantom_BPlayerVoted;
+int[c_phantomMaxPlayers] libPhantom_AllianceDialog;
+int[c_phantomMaxPlayers] libPhantom_DeceptionDialog;
+int[c_phantomMaxPlayers][c_phantomMaxPlayers] libPhantom_AllianceCheckbox;
+int[c_phantomMaxPlayers][c_phantomMaxPlayers] libPhantom_VisionCheckbox;
+int[c_phantomMaxPlayers] libPhantom_InitialMinerals;
+int[c_phantomMaxPlayers] libPhantom_InitialGas;
+bool[c_phantomMaxPlayers] libPhantom_HidingSupplyCap;
+int[c_phantomMaxPlayers] libPhantom_DeceptionCheckbox;
+int libPhantom_AnnouncementMessageDialog;
+
+bool[c_phantomMaxPlayers][c_phantomMaxPlayers] libPhantom_VisionMap;
+
+// DO NOT USE EXCEPT IN EVENT OF LEAVED PLAYER.
+int[c_phantomMaxPlayers] libPhantom_CurrentMinerals;
+int[c_phantomMaxPlayers] libPhantom_CurrentGas;
+
+// Initializes the Phantom library. Sets up game roles, etc.
+void libPhantom_InitLib()
+{
+	int i;
+	timer t;
+	
+	libNtve_InitLib();
+	libLbty_InitLib();
+	
+	libPhantom_Configure();
+	
+	
+	// Populate internal values
+	i = 0;
+	while(i < c_phantomRole_MAX)
+	{
+		libPhantom_Roles[i].myMask = (1 << i);
+		i += 1;
+	}
+	
+	// Setup trigger handles
+	TriggerAddEventUnitDied(TriggerCreate("libPhantom_TriggerUnitDied"), null);
+	TriggerAddEventTimeElapsed(TriggerCreate("libPhantom_TriggerMapInitialization"), 0, c_timeReal);
+	TriggerAddEventTimePeriodic(TriggerCreate("libPhantom_TriggerPeriodicResourceHandout"), 1, c_timeReal);
+	TriggerAddEventTimePeriodic(TriggerCreate("libPhantom_TriggerPeriodicMineralTracker"), 0, c_timeReal);
+	TriggerAddEventTimePeriodic(TriggerCreate("libPhantom_TriggerPeriodicGameLoop"), 1, c_timeReal);
+	TriggerAddEventPlayerLeft(TriggerCreate("libPhantom_TriggerPlayerLeft"), c_playerAny, c_gameResultUndecided);
+}
+
+void libPhantom_SetMapFlag(int flag)
+{
+	if( !(libPhantom_MapFlags & flag) ) {
+		libPhantom_MapFlags |= flag;
+	}
+}
+
+void libPhantom_UnsetMapFlag(int flag)
+{
+	if( libPhantom_MapFlags & flag ) {
+		libPhantom_MapFlags &= ~flag;
+	}
+}
+
+bool libPhantom_HasMapFlag(int flag)
+{
+	// Must be done in if-else fashion due to a Galaxy bug.
+	if( libPhantom_MapFlags & flag ) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+bool libPhantom_HasPlayerVoted(int p)
+{
+	return libPhantom_BPlayerVoted[p];
+}
+
+void libPhantom_PlayerVoted(int p)
+{
+	libPhantom_BPlayerVoted[p] = true;
+}
+
+bool libPhantom_IsGameStarted()
+{
+	return libPhantom_GameStarted;
+}
+
+void libPhantom_SetGameStarted(bool s)
+{
+	libPhantom_GameStarted = s;
+}
+
+int libPhantom_GetGameTime()
+{
+	return libPhantom_GameTime;
+}
+
+void libPhantom_SendInformationMessageToGroupText(playergroup g, text message)
+{
+	UIDisplayMessage( g, c_messageAreaChat, StringToText("<c val=\"ffff00\">Information</c>: ") + message );
+	SoundPlay(SoundLink("UI_BnetToast", -1), g, 100, 0);
+}
+
+void libPhantom_SendInformationMessageToAll(string message)
+{
+	libPhantom_SendInformationMessageToGroupText(PlayerGroupActive(), StringToText(message));
+}
+
+void libPhantom_SendInformationMessageToAllText(text message)
+{
+	libPhantom_SendInformationMessageToGroupText(PlayerGroupActive(), message );
+}
+
+void libPhantom_SendInformationMessageToGroup(playergroup g, string message)
+{
+	libPhantom_SendInformationMessageToGroupText(g, StringToText(message) );
+}
+
+void libPhantom_SendAnnouncementMessageToAll(string message, int duration)
+{
+		int dialog = DialogCreate(800, 200, c_anchorTop, 0, 200, false);
+
+		if( libPhantom_AnnouncementMessageDialog != 0 )
+		{
+			DialogDestroy(libPhantom_AnnouncementMessageDialog);
+		}
+		libPhantom_AnnouncementMessageDialog = dialog;
+		
+		DialogSetImageVisible(dialog, false);
+		DialogSetVisible(dialog, PlayerGroupActive(), true);
+		libNtve_gf_CreateDialogItemLabel(dialog, 800, 200, c_anchorCenter, 0, 0, StringToText(message), Color(100,0,0),true,0.1);
+		libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "ChallengeReady", PlayerGroupActive());
+		// Now we get written out over 0.1
+		Wait(0.1, c_timeReal);
+		DialogControlFadeTransparency(DialogControlLastCreated(), PlayerGroupActive(), duration, 100);
+		
+		// Dialog will be destroyed next call.
+}
+
+// Returns the current selected game mode.
+int libPhantom_GetCurrentGameMode()
+{
+	return libPhantom_GameModeCurrent;
+}
+
+// Returns the name of the current game mode.
+string libPhantom_GetCurrentGameModeName()
+{
+	return libPhantom_GameModes[libPhantom_GetCurrentGameMode()].modeName;
+}
+
+// Sets the current gamemode. This method also invokes the game mode's onModeSelected handler.
+void libPhantom_SetCurrentGameMode(int mode)
+{
+	libPhantom_GameModeCurrent = mode;
+	TriggerExecute( libPhantom_GameModes[mode].onModeSelected, true, true );
+	TriggerExecute( TriggerCreate("libPhantom_TriggerGameModeSelected"), true, true );
+}
+
+// Returns true/false depending on whether there are sufficient players
+// Must be called after game mode has been chosen.
+bool libPhantom_HasSufficientPlayers()
+{
+	int i = 0;
+	int c = 0;
+	int x = PlayerGroupCount( PlayerGroupActive() );
+	int mode = libPhantom_GetCurrentGameMode();
+	while( i < c_phantomRole_MAX )
+	{
+		if( libPhantom_GameModes[mode].participatingRoles & libPhantom_Roles[i].myMask ) {
+			c += libPhantom_Roles[i].minCount;
+		}
+		
+		i += 1;
+	}
+	
+	return (x > c);
+}
+
+// Returns a string containing the color-coded role name.
+string libPhantom_BuildRoleName(int r)
+{
+	return "<c val=\"" + libPhantom_Roles[r].colorCode + "\">" + libPhantom_Roles[r].roleName + "</c>";
+}
+
+// Returns a string containing the color-coded role name (plural version). Ex: Paladins/Slayers/Keepers of Light
+string libPhantom_BuildPluralRoleName(int r)
+{
+	return "<c val=\"" + libPhantom_Roles[r].colorCode + "\">" + libPhantom_Roles[r].pluralRoleName + "</c>";
+}
+
+void libPhantom_SetPlayerAliveOrDead(int p, bool alive)
+{
+	libPhantom_IsAlive[p] = alive;
+}
+
+bool libPhantom_IsPlayerAlive(int i)
+{
+	return libPhantom_IsAlive[i];
+}
+
+// Returns the role of a player. If a role can impersonate another role, this role will return the impersonating
+// role if "allowImpersonation" is true.
+int libPhantom_GetPlayerRole(int p, bool allowImpersonation)
+{
+	if( allowImpersonation && libPhantom_Roles[libPhantom_PlayerRoles[p]].impersonateRole != -1 )
+	{
+		return libPhantom_Roles[libPhantom_PlayerRoles[p]].impersonateRole;
+	}
+	
+	return libPhantom_PlayerRoles[p];
+}
+
+void libPhantom_SetPlayerRole(int p, int r)
+{
+	libPhantom_PlayerRoles[p] = r;
+	PlayerModifyPropertyInt(p, c_playerPropSuppliesLimit, c_playerPropOperSetTo, libPhantom_Roles[r].populationCap);
+}
+
+void libPhantom_PlayerHideSupplyCap(int p, bool hide)
+{
+	if(hide) {
+		PlayerModifyPropertyInt(p, c_playerPropSuppliesLimit, c_playerPropOperSetTo, 200);
+	} else {
+		PlayerModifyPropertyInt(p, c_playerPropSuppliesLimit, c_playerPropOperSetTo, libPhantom_Roles[libPhantom_GetPlayerRole(p, false)].populationCap);
+	}
+	
+	libPhantom_HidingSupplyCap[p] = hide;
+}
+
+bool libPhantom_IsPlayerHidingSupplyCap(int p)
+{
+	return libPhantom_HidingSupplyCap[p];
+}
+
+// Returns true if two players ROLES are allied.
+// THIS METHOD DOES NOT CHECK ACTUAL ALLIANCE STATUS.
+bool libPhantom_PlayersAreAllied(int a, int b)
+{
+	int aMask = libPhantom_Roles[libPhantom_GetPlayerRole(a, false)].allianceMask;
+	int bMask = libPhantom_Roles[libPhantom_GetPlayerRole(b, false)].allianceMask;
+	// Weird Galaxy issue: won't let "return aMask & bMask != 0" compile properly.
+	// Do not change silly redundant code!
+	if( aMask & bMask ) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+// Determines whether any side has won the game.
+// The logic for this method is simple, for the game to be over, all alive players must
+// have an alliancemask that includes all other roles masks in the game.
+bool libPhantom_IsGameOver()
+{
+	int i;
+	int x;
+	while( i < c_phantomMaxPlayers )
+	{
+		if( !libPhantom_IsPlayerAlive(i) ) {
+			i += 1;
+			continue;
+		}
+		
+		x = 0;
+		while(x < c_phantomMaxPlayers ) 
+		{
+			if( !libPhantom_IsPlayerAlive(x) ) {
+				x += 1;
+				continue;
+			}
+			
+			if( !libPhantom_PlayersAreAllied(i, x) ) {
+				return false;
+			}
+			
+			x += 1;
+		}
+		
+		i += 1;
+	}
+	
+	return true;
+}
+
+// Is player ready to have his state set to dead?
+// For this to return true, player must have no structures, or workers
+bool libPhantom_IsPlayerReadyToDie(int p)
+{
+	int structures = UnitGroupCount(UnitGroup(null, p, RegionEntireMap(), UnitFilter((1 << c_targetFilterStructure), 0, 0, 0), 0), c_unitCountAlive);
+	int workers = UnitGroupCount(UnitGroup(null, p, RegionEntireMap(), UnitFilter((1 << c_targetFilterWorker), 0, 0, 0), 0), c_unitCountAlive);
+	return (structures == 0 && workers == 0);
+}
+
+// Returns whether a player has no structures, and only worker units left.
+bool libPhantom_PlayerHasOnlyWorkers(int p)
+{
+	int structures = UnitGroupCount(UnitGroup(null, p, RegionEntireMap(), UnitFilter((1 << c_targetFilterStructure), 0, 0, 0), 0), c_unitCountAlive);
+	int workers = UnitGroupCount(UnitGroup(null, p, RegionEntireMap(), UnitFilter((1 << c_targetFilterWorker), 0, 0, 0), 0), c_unitCountAlive);
+	return (structures == 0 && workers > 0);
+}
+
+void libPhantom_PingWorkers(int p)
+{
+	unitgroup workers = UnitGroup(null, p, RegionEntireMap(), UnitFilter((1 << c_targetFilterWorker), 0, 0, 0), 0);
+	UnitGroupLoopBegin(workers);
+	while(!UnitGroupLoopDone())
+	{
+		MinimapPing(PlayerGroupActive(), UnitGetPosition(UnitGroupLoopCurrent()), 2.0, libNtve_gf_ConvertPlayerColorToColor(PlayerGetColorIndex(p, false)));
+		UnitGroupLoopStep();
+	}
+	UnitGroupLoopEnd();
+}
+
+// Kills every unit the player owns.
+static void libPhantom_KillAllPlayerUnits(int p)
+{
+	unitgroup g = UnitGroup(null, p, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0);
+	UnitGroupLoopBegin(g);
+	while( !UnitGroupLoopDone() ) 
+	{
+		UnitKill(UnitGroupLoopCurrent());
+		UnitGroupLoopStep();
+	}
+	UnitGroupLoopEnd();
+}
+
+// Removes every unit the player owns.
+static void libPhantom_RemoveAllPlayerUnits(int p)
+{
+	unitgroup g = UnitGroup(null, p, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0);
+	UnitGroupLoopBegin(g);
+	while( !UnitGroupLoopDone() ) 
+	{
+		UnitRemove(UnitGroupLoopCurrent());
+		UnitGroupLoopStep();
+	}
+	UnitGroupLoopEnd();
+}
+
+void libPhantom_BuildHelpMenuTips()
+{
+	int i;
+	string desc;
+	
+	// Phantom gameplay
+	desc = "Phantom is a game of deception. It is now always wise to reveal your role to the other players. Use your knowledge about the Game Modes to uncover those who are Phantoms and slay them.";
+	HelpPanelAddTip( PlayerGroupActive(), libNtve_gf_FormatTipTitle(StringToText("Phantom"), 0), StringToText(desc), StringToText(""), "Assets\\Textures\\ui_tip_questionmark.dds");
+	
+	// Roles
+	i = 0;
+	desc = "";
+	while(i < c_phantomRole_MAX)
+	{
+		desc += libPhantom_BuildRoleName(i) + "<n />";
+		desc += libPhantom_Roles[i].description + "<n /><n />";
+		i += 1;
+	}
+	HelpPanelAddTip( PlayerGroupActive(), libNtve_gf_FormatTipTitle(StringToText("Roles"), 0), StringToText(desc), StringToText(""), "Assets\\Textures\\ui_tip_questionmark.dds");
+	
+	// Game Modes
+	i = 0;
+	desc = "";
+	while(i < c_phantomGameMode_MAX)
+	{
+		desc += libPhantom_GameModes[i].modeName + "<n />";
+		desc += libPhantom_GameModes[i].description + "<n /><n />";
+		i += 1;
+	}
+	HelpPanelAddTip( PlayerGroupActive(), libNtve_gf_FormatTipTitle(StringToText("Game Modes"), 0), StringToText(desc), StringToText(""), "Assets\\Textures\\ui_tip_questionmark.dds");
+}
+
+playergroup libPhantom_GetPlayersInRole(int r)
+{
+	playergroup p = PlayerGroupEmpty();
+	int i;
+	
+	while(i < c_phantomMaxPlayers)
+	{
+		if( !libPhantom_IsPlayerAlive(i) ) {
+			i += 1;
+			continue;
+		}
+		
+		if( libPhantom_GetPlayerRole(i, false) == r ) {
+			PlayerGroupAdd(p, i);
+		}
+		
+		i += 1;
+	}
+	
+	return p;
+}
+
+int libPhantom_PlayerCountInRole(int r)
+{
+	int i;
+	int x;
+	while(i < c_phantomMaxPlayers)
+	{
+		if( !libPhantom_IsPlayerAlive(i) ) {
+			i += 1;
+			continue;
+		}
+		
+		if( libPhantom_GetPlayerRole(i, false) == r ) {
+			x += 1;
+		}
+		i += 1;
+	}
+	
+	return x;
+}
+
+// Takes a mask of roles and returns players that are in any of them.
+playergroup libPhantom_GetPlayersInRoles(int mask)
+{
+	int i;
+	playergroup p = PlayerGroupEmpty();
+	while(i < c_phantomMaxPlayers)
+	{
+		if( !libPhantom_IsPlayerAlive(i) ) {
+			i += 1;
+			continue;
+		}
+		
+		if( mask & libPhantom_Roles[libPhantom_GetPlayerRole(i, false)].myMask ) {
+			PlayerGroupAdd(p, i);
+		}
+		i += 1;
+	}
+	
+	return p;
+}
+
+// Kills everything and ensures it's dead
+// Also marks the player internally as defeated.
+// Use this method to eliminate a player from the game.
+void libPhantom_EliminatePlayer(int p)
+{
+	string message;
+	int role;
+	int i;
+	
+	if( !libPhantom_IsPlayerAlive(p) ) {
+		return;
+	}
+	
+	libPhantom_SetPlayerAliveOrDead(p, false);
+	libPhantom_KillAllPlayerUnits(p);
+	libPhantom_RemoveAllPlayerUnits(p);
+	
+	MeleeSetOption(p, c_meleeOptionReveal, false);
+	
+	// Kill the player, reveal his/her role now to the world.
+	// "A {role} has been eliminated."
+	role = libPhantom_GetPlayerRole(p, false);
+	message = "A " + libPhantom_BuildRoleName(role) + " has been eliminated.";
+	libPhantom_SendInformationMessageToAll(message);
+	
+	// Remove our resources, so we can't leave and have 'em split.
+	PlayerModifyPropertyInt(p, c_playerPropMinerals, c_playerPropOperSetTo, 0);
+	PlayerModifyPropertyInt(p, c_playerPropVespene, c_playerPropOperSetTo, 0);
+	
+	// Execute onDeath hook if available.
+	if( libPhantom_Roles[role].onDeath ) {
+		TriggerExecute( libPhantom_Roles[role].onDeath, true, true);
+	}
+	
+	// Has the game ended?
+	if( libPhantom_IsGameOver() )
+	{
+		if( libPhantom_PlayerCountInRole(c_phantomRole_Phantom) == 0 ) {
+			libPhantom_SendAnnouncementMessageToAll( "The Phantoms have been defeated", 10 );
+		} else {
+			libPhantom_SendAnnouncementMessageToAll( "The Phantoms have conquered ", 10);
+		}
+		CinematicFade( false, 5.0, c_fadeStyleNormal, Color(0, 0, 0), 0, false);
+		// Pause to allow for players to quickly chat before it ends.
+		Wait(10, c_timeReal);
+		
+		// Allow score viewing (must be done in separate loop)
+		i = 0;
+		while(i < c_phantomMaxPlayers)
+		{
+			PlayerScoreValueEnableAll(i, true);
+			i += 1;
+		}
+		
+		i = 0;
+		while( i < c_phantomMaxPlayers )
+		{
+			if( libPhantom_IsPlayerAlive(i) ) {
+				GameOver(i, c_gameOverVictory, true, true);
+			} else if( PlayerGroupHasPlayer(PlayerGroupActive(), i) ){
+				GameOver(i, c_gameOverDefeat, true, true);
+			}
+			i += 1;
+		}
+	}
+}
+
+// Used to set intended vision status at night.
+void libPhantom_SetVisionMapVisioned(int player, int target, bool visioned)
+{
+	libPhantom_VisionMap[player][target] = visioned;
+}
+
+void libPhantom_SaveVisionStatus()
+{
+	int i;
+	int x;
+	
+	//libPhantom_VisionMap
+	i = 0;
+	while(i < c_phantomMaxPlayers)
+	{
+		if( !PlayerGroupHasPlayer(PlayerGroupActive(), i) ) {
+			i += 1;
+			continue;
+		}
+		x = 0;
+		while(x < c_phantomMaxPlayers)
+		{
+			if( !PlayerGroupHasPlayer(PlayerGroupActive(), x) ) {
+				x += 1;
+				continue;
+			}
+			libPhantom_VisionMap[i][x] = PlayerGetAlliance(i, c_allianceIdVision, x);
+			x += 1;
+		}
+		i += 1;
+	}
+}
+
+void libPhantom_DisableVision(bool b)
+{
+	int i;
+	int x;
+	
+	// We're unvisioning
+	if( b ) {
+		libPhantom_SetMapFlag(c_phantomMapFlag_NoSharedVision);
+		libPhantom_SaveVisionStatus();
+		i = 0;
+		while(i < c_phantomMaxPlayers)
+		{
+			if( !PlayerGroupHasPlayer(PlayerGroupActive(), i) ) {
+				i += 1;
+				continue;
+			}
+			
+			x = 0;
+			while(x < c_phantomMaxPlayers)
+			{
+				// make sure we don't unvision ourselves. :P
+				if( !PlayerGroupHasPlayer(PlayerGroupActive(), x) || i == x ) {
+					x += 1;
+					continue;
+				}
+				PlayerSetAlliance(i, c_allianceIdVision, x, false);
+				x += 1;
+			}
+			i += 1;
+		}
+	} else {
+		// We're revisioning!
+		libPhantom_UnsetMapFlag(c_phantomMapFlag_NoSharedVision);
+		i = 0;
+		while(i < c_phantomMaxPlayers)
+		{
+			if( !PlayerGroupHasPlayer(PlayerGroupActive(), i) ) {
+				i += 1;
+				continue;
+			}
+			x = 0;
+			while(x < c_phantomMaxPlayers)
+			{
+				if( !PlayerGroupHasPlayer(PlayerGroupActive(), x) ) {
+					x += 1;
+					continue;
+				}
+				PlayerSetAlliance(i, c_allianceIdVision, x, libPhantom_VisionMap[i][x]);
+				x += 1;
+			}
+			i += 1;
+		}
+	}
+}
+
+// Returns the count of players that have roles specified in the mask.
+int libPhantom_GetPlayerCountInRoles(int mask)
+{
+	return PlayerGroupCount(libPhantom_GetPlayersInRoles(mask));
+}
+
+// Predefining for use in this method only.
+void libPhantom_ToggleDeceptionDialog(int player);
+void libPhantom_ToggleAllianceDialog(int player)
+{
+	int dialog;
+	int i;
+	int CurrentY;
+	if( libPhantom_AllianceDialog[player] )
+	{
+		DialogDestroy( libPhantom_AllianceDialog[player] );
+		libPhantom_AllianceDialog[player] = 0;
+		return;
+	}
+	
+	// Don't overlap the two dialogs!
+	if( libPhantom_DeceptionDialog[player] )
+	{
+		libPhantom_ToggleDeceptionDialog(player);
+	}
+	
+	libPhantom_AllianceDialog[player] = DialogCreate(400, 675, c_anchorTopLeft, 225, 50, true);
+	dialog = libPhantom_AllianceDialog[player];
+	DialogSetTitle(dialog, StringToText("Alliances"));
+	DialogSetTransparency(dialog, 25); // 25% transparent
+	
+	libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 50, 70, StringToText("Player"), Color(100,100,100), false, 1.0);
+	libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 200, 70, StringToText("Allied"), Color(100,100,100), false, 1.0);
+	libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 300, 70, StringToText("Vision"), Color(100,100,100), false, 1.0);
+	
+	i = 0;
+	CurrentY = 110;
+	while(i < c_phantomMaxPlayers)
+	{
+		if( i != player && PlayerGroupHasPlayer(PlayerGroupActive(), i) )
+		{
+			// Draw this dude's UI box.
+			libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 50, CurrentY, PlayerName(i), libNtve_gf_ConvertPlayerColorToColor(PlayerGetColorIndex(i, false)), false, 1.0);
+			libPhantom_AllianceCheckbox[player][i] = libNtve_gf_CreateDialogItemCheckBox(dialog, 35, 35, c_anchorTopLeft, 200, CurrentY-10, StringToText(""), false);
+			// Are we allied? If so, check the box!
+			if( PlayerGetAlliance(player, c_allianceIdPassive, i) ) {
+				libNtve_gf_SetDialogItemChecked(DialogControlLastCreated(), true, PlayerGroupSingle(player));
+			}
+			libPhantom_VisionCheckbox[player][i] = libNtve_gf_CreateDialogItemCheckBox(dialog, 35, 35, c_anchorTopLeft, 300, CurrentY-10, StringToText(""), false);
+			// Are we visioned? If so, check the box!
+			if( PlayerGetAlliance(player, c_allianceIdVision, i) ) {
+				libNtve_gf_SetDialogItemChecked(DialogControlLastCreated(), true, PlayerGroupSingle(player));
+			}
+			
+			// c_phantomMapFlag_NoSharedVision in effect? Lock the vision checkbox.
+			if( libPhantom_HasMapFlag(c_phantomMapFlag_NoSharedVision) ) {
+				DialogControlSetEnabled(DialogControlLastCreated(), PlayerGroupSingle(player), false);
+			}
+			CurrentY += 35;
+		}
+		i += 1;
+	}
+	
+	// Now we need our submit buttons
+	libNtve_gf_CreateDialogItemButton( dialog, 150, 50, c_anchorBottom, -75, 30, StringToText(""), StringToText("Submit"), "" );
+	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerAllianceSubmitButtonClicked"), player, DialogControlLastCreated(), c_triggerControlEventTypeClick);
+	libNtve_gf_CreateDialogItemButton( dialog, 150, 50, c_anchorBottom, 75, 30, StringToText(""), StringToText("Cancel"), "" );
+	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerAllianceScreenButtonClicked"), player, DialogControlLastCreated(), c_triggerControlEventTypeClick);
+	
+	CurrentY += 50;
+	
+	DialogSetSize(dialog, 400, CurrentY+20);
+	DialogSetVisible(dialog, PlayerGroupSingle(player), true);
+}
+
+void libPhantom_ToggleDeceptionDialog(int player)
+{
+	int dialog;
+	int[6] items;
+	int i;
+	
+	if( libPhantom_DeceptionDialog[player] )
+	{
+		DialogDestroy( libPhantom_DeceptionDialog[player] );
+		libPhantom_DeceptionDialog[player] = 0;
+		return;
+	}
+	
+	// Don't overlap the two dialogs!
+	if( libPhantom_AllianceDialog[player] )
+	{
+		libPhantom_ToggleAllianceDialog(player);
+	}
+	
+	libPhantom_DeceptionDialog[player] = DialogCreate(450, 400, c_anchorTopLeft, 225, 50, true);
+	dialog = libPhantom_DeceptionDialog[player];
+	DialogSetTitle(dialog, StringToText("Deception"));
+	DialogSetTransparency(dialog, 25); // 25% transparent
+	
+	// Ideal layout:
+	//
+	// +-------------------------------------+
+	// |             Deception               |
+	// |                                     |
+	// |              Minerals     Vespene   |
+	// | Mined           X           Y       |
+	// | Spent           X           Y       |
+	// | Remaining       X           Y       |
+	// |                                     |
+	// | Cap Supply At 200    [x]            |
+	// +-------------------------------------+
+	// We can use PlayerScoreValueGetAsInt(player, prop) to get these values.
+	// Valid options: "MineralsCollected", "MineralsCurrent", "MineralsSpent", etc for "Vespene"
+	
+	// Columns
+	libNtve_gf_CreateDialogItemImage(dialog, 32, 32, c_anchorTopLeft, 200+16, 100, StringToText(""), "Assets\\Textures\\icon-mineral.dds", c_triggerImageTypeNormal, false, Color(100,100,100), c_triggerBlendModeNormal);
+	libNtve_gf_CreateDialogItemImage(dialog, 32, 32, c_anchorTopLeft, 300+16, 100, StringToText(""), "Assets\\Textures\\icon-gas.dds", c_triggerImageTypeNormal, false, Color(100,100,100), c_triggerBlendModeNormal);
+	//libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 200, 100, StringToText("<img width=\"64\" height=\"64\" val=\"Assets\\Textures\\icon-mineral.dds\" />"), Color(100,100,100), false, 1.0);
+	//libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 300, 100, StringToText("Vespene"), Color(100,100,100), false, 1.0);
+	
+	// Rows
+	libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 50, 140, StringToText("Mined"), Color(100,100,100), false, 1.0);
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercCategory", PlayerGroupSingle(player));
+	libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 50, 180, StringToText("Spent"), Color(100,100,100), false, 1.0);
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercCategory", PlayerGroupSingle(player));
+	libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 50, 220, StringToText("Remaining"), Color(100,100,100), false, 1.0);
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercCategory", PlayerGroupSingle(player));
+	
+	// And now our actual data!
+	// Minerals Mined
+	items[0] = libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 200, 140, StringToText(""), Color(100,100,100), false, 1.0);
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
+	// Vespene Mined
+	items[1] = libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 300, 140, StringToText(""), Color(100,100,100), false, 1.0);
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
+	
+	// Minerals Spent
+	items[2] = libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 200, 180, StringToText(""), Color(100,100,100), false, 1.0);
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
+	// Vespene Spent
+	items[3] = libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 300, 180, StringToText(""), Color(100,100,100), false, 1.0);
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
+	
+	// Minerals Remaining
+	items[4] = libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 200, 220, StringToText(""), Color(100,100,100), false, 1.0);
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
+	// Vespene Remaining
+	items[5] = libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 300, 220, StringToText(""), Color(100,100,100), false, 1.0);
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
+	
+	libNtve_gf_CreateDialogItemLabel(dialog, 300, 35, c_anchorTopLeft, 50, 280, StringToText("Cap Population at 200"), Color(100,100,100), false, 1.0);
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
+	libPhantom_DeceptionCheckbox[player] = libNtve_gf_CreateDialogItemCheckBox(dialog, 35, 35, c_anchorTopLeft, 300, 270, StringToText(""), libPhantom_IsPlayerHidingSupplyCap(player));
+	
+	libNtve_gf_CreateDialogItemButton(dialog, 150, 50, c_anchorBottom, -75, 30, StringToText(""), StringToText("Submit"), "");
+	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerDeceptionDialogSubmitClicked"), player, DialogControlLastCreated(), c_triggerControlEventTypeClick);
+	libNtve_gf_CreateDialogItemButton(dialog, 150, 50, c_anchorBottom, 75, 30, StringToText(""), StringToText("Cancel"), "");
+	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerDeceptionScreenButtonClicked"), player, DialogControlLastCreated(), c_triggerControlEventTypeClick);
+	
+	DialogSetVisible(dialog, PlayerGroupSingle(player), true);
+	
+	while( libPhantom_DeceptionDialog[player] != 0 && dialog == libPhantom_DeceptionDialog[player] )
+	{
+		i = 0;
+		while(i < 6)
+		{
+			// Minerals Mined
+			if( i == 0 ) {
+				libNtve_gf_SetDialogItemText(items[i], IntToText(libPhantom_InitialMinerals[player] + PlayerScoreValueGetAsInt(player, "MineralsCollected")), PlayerGroupSingle(player));
+			}
+			
+			// Minerals Spent
+			if( i == 2 ) {
+				libNtve_gf_SetDialogItemText(items[i], IntToText(PlayerScoreValueGetAsInt(player, "MineralsSpent")), PlayerGroupSingle(player));
+			}
+			
+			// Minerals Remaining
+			if( i == 4 ) {
+				libNtve_gf_SetDialogItemText(items[i], IntToText(libPhantom_InitialMinerals[player] + PlayerScoreValueGetAsInt(player, "MineralsCollected") - PlayerScoreValueGetAsInt(player, "MineralsSpent")), PlayerGroupSingle(player));
+			}
+			
+			// Gas Mined
+			if( i == 1 ) {
+				libNtve_gf_SetDialogItemText(items[i], IntToText(libPhantom_InitialGas[player] + PlayerScoreValueGetAsInt(player, "VespeneCollected")), PlayerGroupSingle(player));
+			}
+			
+			// Gas Spent
+			if( i == 3 ) {
+				libNtve_gf_SetDialogItemText(items[i], IntToText(PlayerScoreValueGetAsInt(player, "VespeneSpent")), PlayerGroupSingle(player));
+			}
+			
+			// Gas Remaining
+			if( i == 5 ) {
+				libNtve_gf_SetDialogItemText(items[i], IntToText(libPhantom_InitialGas[player] + PlayerScoreValueGetAsInt(player, "VespeneCollected") - PlayerScoreValueGetAsInt(player, "VespeneSpent")), PlayerGroupSingle(player));
+			}
+			
+			i += 1;
+		}
+		// At this point, this gets thrown into it's own separate Galaxy thread.
+		Wait(0, c_timeReal);
+	}
+}
+
+//--------------------------------------
+// Voting/Voting Helper Methods
+//--------------------------------------
+// The number of dynamically generated vote boxes, excluding the Game Modes.
+static int libPhantom_GetVoteBoxCount()
+{
+	// This number is actually one higher, because we have to use the last number for
+	// our "standalone variants". :)
+	return c_phantomGameVariantGroup_MAX;
+}
+
+void libPhantom_ShowVotingDialog()
+{
+	int dialog;
+	int itr;
+	const int c_dialogWidth = 350;
+	const int c_dialogHeight = 130 + 10 + 10 + (c_phantomGameMode_MAX-1)*40;
+	int i;
+	int x;
+	int o;
+	int boxcount;
+	int barrier;
+	int currentX;
+	int currentY;
+	int innerX;
+	int innerY;
+	
+	dialog = DialogCreate(c_dialogWidth, c_dialogHeight, c_anchorTop, 0, 100, true);
+	libPhantom_VoteDialogs[0] = dialog;
+	DialogSetVisible(dialog, PlayerGroupActive(), true);
+	// First options: The Game Mode
+	libNtve_gf_CreateDialogItemLabel( dialog, 280, 100, c_anchorTop, 0, 10, StringToText("Game Mode"), Color(100,100,100), false, 0);
+	libNtve_gf_SetDialogItemStyle( DialogControlLastCreated(), "PurchasePanelTitle", PlayerGroupActive() );
+	DialogControlSetVisible(DialogControlLastCreated(), PlayerGroupActive(), true);
+
+	// Generate checkboxes for game modes
+	currentX = FixedToInt(c_dialogWidth * 0.15);
+	currentY = 80;
+	i = 0;
+	while( i < c_phantomGameMode_MAX )
+	{
+		libNtve_gf_CreateDialogItemLabel( dialog, 200, 50, c_anchorTopLeft, currentX, currentY, StringToText(libPhantom_GameModes[i].plainName), Color(100, 100, 100), false, 0);
+		libNtve_gf_SetDialogItemStyle( DialogControlLastCreated(), "PurchasePanelCreditsHeading", PlayerGroupActive() );
+		
+		libPhantom_GameModes[i].dialogControl = libNtve_gf_CreateDialogItemCheckBox( dialog, 50, 50, c_anchorTopLeft, currentX + 200, currentY, StringToText(libPhantom_GameModes[i].shortDescription), false);
+		TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerGameModeDialogCheckboxClicked"), c_playerAny, libPhantom_GameModes[i].dialogControl, c_triggerControlEventTypeChecked);
+		currentY += 40;
+		
+		i += 1;
+	}
+	
+	// Now here's the logic for the game variant groups:
+	// we have a fixed x-value at the center of the screen we can calculate, c
+	// we have a fixed width of our boxes for each variant, w
+	// and a fixed number of them, n.
+	// w*n = total width of all boxes
+	// (total screen width - total width of all boxes) * 0.5 = barrier width
+	// repeat for n in groups of 3.
+	i = 0;
+	itr = 1;
+	while( i <= libPhantom_GetVoteBoxCount() )
+	{
+		x = i % 3;
+		if( i != 0 && i % 3 == 0 )
+		{
+			itr += 1;
+		}
+		// calculate the boxcount at this level
+		// ie. how many to the next multiple of 3.
+		// n = t - 3(r-1)
+		//   |           |          |
+		boxcount = (libPhantom_GetVoteBoxCount() + 1) - (3*itr) + 3;
+		barrier = FixedToInt(1200 - (boxcount * c_dialogWidth) * 0.5); // we now have our barrier width :)
+		if( x == 0 ) {
+			currentX = -1 * FixedToInt( IntToFixed(c_dialogWidth) * IntToFixed(boxcount) * 0.5 );
+			if( boxcount > 1 ) {
+				currentX += c_dialogWidth/2; // offset that first box by 1/2w since it's done by center position, not left position.
+			}
+			if( i == 0 ) {
+				currentY = 100 + c_dialogHeight + 40;
+			} else {
+				currentY += 300;
+			}
+		} else {
+			currentX += c_dialogWidth;
+		}
+
+		dialog = DialogCreate(c_dialogWidth, 300, c_anchorTop, currentX, currentY, true);
+		libPhantom_VoteDialogs[2+i] = dialog;
+		
+		if( i != libPhantom_GetVoteBoxCount() )
+		{
+			// Title of this box
+			libNtve_gf_CreateDialogItemLabel( dialog, c_dialogWidth, 100, c_anchorTop, 0, 20, StringToText(libPhantom_GameVariants[i].name), Color(100, 100, 100), false, 0);
+			libNtve_gf_SetDialogItemStyle( DialogControlLastCreated(), "PurchasePanelTitle", PlayerGroupActive() );
+			DialogControlSetVisible(DialogControlLastCreated(), PlayerGroupActive(), true);
+			
+			// Now individual options
+			innerX = FixedToInt(c_dialogWidth * 0.22);
+			innerY = 100;
+			o = 0;
+			while( o < c_phantomMaxVariantsPerGroup ) {
+				if( libPhantom_GameVariants[i].variants[o].name != "" ) {
+					// We can assume this variant exists.
+					libNtve_gf_CreateDialogItemLabel( dialog, 200, 50, c_anchorTopLeft, innerX, innerY+15, StringToText(libPhantom_GameVariants[i].variants[o].name), Color(100, 100, 100), false, 0);
+					//libNtve_gf_SetDialogItemStyle( DialogControlLastCreated(), "PurchasePanelCreditsHeading", PlayerGroupActive() );
+			
+					libPhantom_GameVariants[i].variants[o].dialogControl = libNtve_gf_CreateDialogItemCheckBox( dialog, 50, 50, c_anchorTopLeft, FixedToInt(c_dialogWidth * 0.65), innerY, StringToText(libPhantom_GameVariants[i].variants[o].tooltip), false);
+					TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerDialogCheckboxClicked"), c_playerAny, libPhantom_GameVariants[i].variants[o].dialogControl, c_triggerControlEventTypeChecked);
+					innerY += 40;
+				}
+				o += 1;
+			}
+		
+			DialogSetVisible(dialog, PlayerGroupActive(), true);
+		} else {
+			// We're working on our standalone variants. :)
+			libNtve_gf_CreateDialogItemLabel( dialog, c_dialogWidth, 100, c_anchorTop, 0, 20, StringToText("Options"), Color(100, 100, 100), false, 0);
+			libNtve_gf_SetDialogItemStyle( DialogControlLastCreated(), "PurchasePanelTitle", PlayerGroupActive() );
+			DialogControlSetVisible(DialogControlLastCreated(), PlayerGroupActive(), true);
+			
+			// Iterate over standalone options
+			innerX = FixedToInt(c_dialogWidth * 0.22);
+			innerY = 100;
+			o = 0;
+			while( o < c_phantomGameVariant_MAX ) {
+				if( libPhantom_StandaloneGameVariants[o].name != "" ) {
+					// We can assume this variant exists.
+					libNtve_gf_CreateDialogItemLabel( dialog, 200, 50, c_anchorTopLeft, innerX, innerY+15, StringToText(libPhantom_StandaloneGameVariants[o].name), Color(100, 100, 100), false, 0);			
+					libPhantom_StandaloneGameVariants[o].dialogControl = libNtve_gf_CreateDialogItemCheckBox( dialog, 50, 50, c_anchorTopLeft, FixedToInt(c_dialogWidth * 0.65), innerY, StringToText(libPhantom_StandaloneGameVariants[o].tooltip), false);
+					innerY += 40;
+				}
+				o += 1;
+			}
+		
+			DialogSetVisible(dialog, PlayerGroupActive(), true);
+		}
+		i += 1;
+	}
+	
+	// Vote buttons, finally!
+	dialog = DialogCreate( 350, 95, c_anchorTop, 0, currentY + 340, true );
+	libPhantom_VoteDialogs[1] = dialog;
+	libNtve_gf_CreateDialogItemButton( dialog, 150, 50, c_anchorLeft, 25, 5, StringToText(""), StringToText("Vote"), "");
+	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerClickVoteButton"), c_playerAny, DialogControlLastCreated(), c_triggerControlEventTypeClick);
+	libNtve_gf_CreateDialogItemButton( dialog, 150, 50, c_anchorRight, 25, 5, StringToText(""), StringToText("Skip"), "");
+	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerClickSkipButton"), c_playerAny, DialogControlLastCreated(), c_triggerControlEventTypeClick);
+	DialogSetVisible(dialog, PlayerGroupActive(), true);
+}
+
+void libPhantom_ResetGameModeVotes(int player, int ignore)
+{
+	int i = 0;
+	while(i < c_phantomGameMode_MAX)
+	{
+		if( libPhantom_GameModes[i].dialogControl != ignore )
+		{
+			libNtve_gf_SetDialogItemChecked( libPhantom_GameModes[i].dialogControl, false, PlayerGroupSingle(player) );
+		}
+		i += 1;
+	}
+}
+
+// Precondition: libPhantom_ShowVotingDialog() has been called and the voting period has
+// concluded.
+void libPhantom_TallyVotes()
+{
+	int i;
+	int o;
+	
+	int playerCount = PlayerGroupCount(PlayerGroupActive());
+	
+	int mostVotes;
+	int mostVotesAmt = -1;
+	
+	// Determine the game mode with the most votes.
+	i = 0;
+	while(i < c_phantomGameMode_MAX)
+	{
+		if( libPhantom_GameModes[i].votes > mostVotesAmt )
+		{
+			mostVotes = i;
+			mostVotesAmt = libPhantom_GameModes[i].votes;
+		}
+		i += 1;
+	}
+	
+	// Take the winner, and activate that game mode.
+	libPhantom_SetCurrentGameMode( mostVotes );
+	
+	// Game Variant Winners
+	i = 0;
+	while(i < c_phantomGameVariantGroup_MAX)
+	{
+		mostVotes = 0;
+		mostVotesAmt = -1;
+		o = 0;
+		while(o < c_phantomMaxVariantsPerGroup)
+		{
+			if( libPhantom_GameVariants[i].variants[o].votes > mostVotesAmt )
+			{
+				mostVotes = o;
+				mostVotesAmt = libPhantom_GameVariants[i].variants[o].votes;
+			}
+			o += 1;
+		}
+		
+		// Activate the winning option.
+		TriggerExecute(libPhantom_GameVariants[i].variants[mostVotes].onActivate, true, true);
+		i += 1;
+	}
+	
+	// Standalone game variant winners
+	// We win these if we have 50% of the active players
+	i = 0;
+	while(i < c_phantomGameVariant_MAX)
+	{
+		if( libPhantom_StandaloneGameVariants[i].votes >= FixedToInt(playerCount * 0.5) )
+		{
+			// Activate this.
+			TriggerExecute(libPhantom_StandaloneGameVariants[i].onActivate, true, true);
+		}
+		i += 1;
+	}
+}
+
+void libPhantom_ResetGameVariantGroup(int player, int group, int ignore)
+{
+	int i = 0;
+	while( i < c_phantomMaxVariantsPerGroup )
+	{
+		if( libPhantom_GameVariants[group].variants[i].dialogControl != ignore )
+		{
+			libNtve_gf_SetDialogItemChecked( libPhantom_GameVariants[group].variants[i].dialogControl, false, PlayerGroupSingle(player) );
+		}
+		i += 1;
+	}
+}
+
+bool libPhantom_VotingInProgress()
+{
+	PlayerGroupLoopBegin(PlayerGroupActive());
+	while( !PlayerGroupLoopDone() )
+	{
+		if( !libPhantom_HasPlayerVoted(PlayerGroupLoopCurrent()) )
+		{
+			PlayerGroupLoopEnd();
+			return true;
+		}
+		PlayerGroupLoopStep();
+	}
+	PlayerGroupLoopEnd();
+	
+	return false;
+}
+
+static int libPhantom_ConvertColorToPlayerDefault(string colour)
+{
+	if( colour == "white" ) {
+		return 0;
+	} else if( colour == "red" ) {
+		return 1;
+	} else if( colour == "blue") {
+		return 2;
+	} else if( colour == "teal" ) {
+		return 3;
+	} else if( colour == "purple" ) {
+		return 4;
+	} else if( colour == "yellow" ) {
+		return 5;
+	} else if( colour == "orange" ) {
+		return 6;
+	} else if( colour == "green" ) {
+		return 7;
+	} else if( colour == "lightpink" ) {
+		return 8;
+	} else if( colour == "violet" ) {
+		return 9;
+	} else if( colour == "lightgrey" ) {
+		return 10;
+	} else if( colour == "lightgray" ) {
+		return 10;
+	} else if( colour == "darkgreen" ) {
+		return 11;
+	} else if( colour == "brown" ) {
+		return 12;
+	} else if( colour == "lightgreen" ) {
+		return 13;
+	} else if( colour == "darkgrey" ) {
+		return 14; 
+	} else if( colour == "darkgray" ) {
+		return 14; 
+	} else if( colour == "pink" ) {
+		return 15;
+	}
+
+	return -1;
+}
+
+// Takes a color ie. "red" and turns to int representing player.
+// Returns -1 if no such player found.
+int libPhantom_ConvertColorToPlayer(string c)
+{
+	int i;
+	
+	i = 1;
+	while(i < c_phantomMaxPlayers)
+	{
+		if( PlayerGetColorIndex(i, false) == libPhantom_ConvertColorToPlayerDefault(c) && PlayerStatus(i) != c_playerStatusUnused )
+		{
+			return i;
+		}
+		i += 1;
+	}
+	
+	return -1;
+}
+
+// Iterates over all active players and assigns them to random roles based on the selected game mode.
+// Precondition: libPhantom_HasSufficientPlayers() will return true.
+void libPhantom_AssignPlayersToRoles()
+{
+	int i;
+	int p;
+	int req;
+	int roleCount = 0;
+	int remainingPlayers;
+	bool b;
+	playergroup g = PlayerGroupCopy(PlayerGroupActive());
+	// So, here's the basic process:
+	// we'll iterate over all of the participating roles and for each player in minCount, we'll 
+	// assign a player to that role. This ensures we have the correct minimums for everything.
+	i = 0;
+	while(i < c_phantomRole_MAX)
+	{
+		if(libPhantom_GameModes[libPhantom_GetCurrentGameMode()].participatingRoles & libPhantom_Roles[i].myMask)
+		{
+			// We do have this role for this game mode. How many players do we need?
+			req = libPhantom_Roles[i].minCount;
+			while( req > 0 ) 
+			{
+				// Pick a random active player.
+				p = PlayerGroupPlayer(g, RandomInt(1, PlayerGroupCount(g)));
+				// Remove player from group, we can't pick him again for another role.
+				PlayerGroupRemove(g, p); 
+				// Set this player to alive and all that jazz.
+				libPhantom_SetPlayerAliveOrDead(p, true);
+				// And now set his role to this.
+				libPhantom_SetPlayerRole(p, i);
+								
+				// Decrement, re-loop the rest (if any)
+				req -= 1;
+			}
+			
+			// We have +1 active role if we reach here. Mark it for later for further filling.
+			// We increment this only if the role actually has a higher maxCount than minCount. (Or maxCount is zero/inf)
+			if( libPhantom_Roles[i].maxCount <= 0 || 
+				(libPhantom_Roles[i].maxCount > 0 && libPhantom_Roles[i].maxCount > libPhantom_Roles[i].minCount)) 
+			{
+				roleCount += 1;
+			}
+		}
+		i += 1;
+	}
+		
+	// So now we have the minimums set in their roles. Let's evenly sort out the remaining players now.
+	remainingPlayers = PlayerGroupCount(g);
+	// Simple method for now, let's just iterate over and add where we can.
+	i = 0;
+	while(remainingPlayers > 0)
+	{
+		if( i >= c_phantomRole_MAX )
+		{
+			i = 0;	
+		}
+		
+		// Unnecessary assignment and comparison here. This is in reference to a Galaxy bug. Do not change this "b"!
+		if( libPhantom_GameModes[libPhantom_GetCurrentGameMode()].participatingRoles & libPhantom_Roles[i].myMask ) {
+			b = true;
+		} else {
+			b = false;
+		}
+		
+		if( b &&
+		   (libPhantom_Roles[i].maxCount <= 0 || libPhantom_PlayerCountInRole(i) < libPhantom_Roles[i].maxCount) )
+		{
+			// Add a player into this role.
+			// Pick a random player
+			p = PlayerGroupPlayer(g, RandomInt(1, PlayerGroupCount(g)));
+			// Remove player from group, we can't pick him again.
+			PlayerGroupRemove(g, p);
+			// Set him to alive status
+			libPhantom_SetPlayerAliveOrDead(p, true);
+			// And set his role.
+			libPhantom_SetPlayerRole(p, i);
+						
+			remainingPlayers -= 1;
+		}
+		
+		i += 1;
+	}
+}
+
+text libPhantom_GetColoredPlayerName(int p)
+{
+	text name = PlayerName(p);
+	return TextWithColor(name, ColorFromIndex(PlayerGetColorIndex(p, false), c_teamColorDiffuse));
+}
+
+// Strengthens a role based on it's strengthen information
+void libPhantom_StrengthenRole(int r)
+{
+	int i;
+	
+	// Can we strengthen?
+	if( libPhantom_Roles[r].blockStrengthen ) {
+		return;
+	}
+	
+	libPhantom_Roles[r].incomeMinerals += libPhantom_Roles[r].mineralIncomeStrengthenAmt;
+	libPhantom_Roles[r].incomeGas += libPhantom_Roles[r].gasIncomeStrengthenAmt;
+	
+	libPhantom_Roles[r].populationCap +=  libPhantom_Roles[r].supplyIncreaseAmt;
+	
+	i = 0;
+	while(i < c_phantomMaxPlayers)
+	{
+		if( libPhantom_GetPlayerRole(i, false) == r ) 
+		{
+			PlayerModifyPropertyInt(i, c_playerPropSuppliesLimit, c_playerPropOperAdd, libPhantom_Roles[r].supplyIncreaseAmt);
+		}
+		i += 1;
+	}
+	
+	libPhantom_SendInformationMessageToAll("The " + libPhantom_BuildPluralRoleName(r) + " grow stronger.");
+}
+
+include "Phantom/InternalTriggers"
+include "Phantom/MapTriggers"
+// Galaxy Editor bug: Must end on newline or errors will be reported on the wrong line

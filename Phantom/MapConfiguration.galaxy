@@ -1,0 +1,99 @@
+void libPhantom_Configure()
+{
+	// Setup Slayer role.
+	libPhantom_Roles[c_phantomRole_Slayer].roleName = "Slayer";
+	libPhantom_Roles[c_phantomRole_Slayer].pluralRoleName = "Slayers";
+	libPhantom_Roles[c_phantomRole_Slayer].colorCode = "0000ff";
+	libPhantom_Roles[c_phantomRole_Slayer].objective = "Discover who the Phantoms are and kill them.";
+	libPhantom_Roles[c_phantomRole_Slayer].description = "The most basic role; allied to the Paladins, the Slayer receives a 10% bounty for enemy units it kills.";
+	libPhantom_Roles[c_phantomRole_Slayer].allianceMask = c_phantomAllianceMask_Good;
+	libPhantom_Roles[c_phantomRole_Slayer].minCount = 1;
+	libPhantom_Roles[c_phantomRole_Slayer].maxCount = 0;
+	libPhantom_Roles[c_phantomRole_Slayer].incomeMinerals = 0;
+	libPhantom_Roles[c_phantomRole_Slayer].incomeGas = 0;
+	libPhantom_Roles[c_phantomRole_Slayer].onStrengthen = null;
+	libPhantom_Roles[c_phantomRole_Slayer].periodicStrengthenTimer = 0;
+	libPhantom_Roles[c_phantomRole_Slayer].onDeath = null;
+	libPhantom_Roles[c_phantomRole_Slayer].revealAlliesAt = -1;
+	libPhantom_Roles[c_phantomRole_Slayer].broadcastReveal = false;
+	libPhantom_Roles[c_phantomRole_Slayer].impersonateRole = -1;
+	libPhantom_Roles[c_phantomRole_Slayer].populationCap = 200;
+	libPhantom_Roles[c_phantomRole_Slayer].killBounty = 0.1;
+	
+	// Setup Paladin role
+	libPhantom_Roles[c_phantomRole_Paladin].roleName = "Paladin";
+	libPhantom_Roles[c_phantomRole_Paladin].pluralRoleName = "Paladins";
+	libPhantom_Roles[c_phantomRole_Paladin].colorCode = "00ff00";
+	libPhantom_Roles[c_phantomRole_Paladin].objective = "Discover who the Phantoms are and kill them while protecting Slayers.";
+	libPhantom_Roles[c_phantomRole_Paladin].description = "The protector role; allied with the Slayers, the Paladin receives 10 minerals and vespene gas per second.";
+	libPhantom_Roles[c_phantomRole_Paladin].allianceMask = c_phantomAllianceMask_Good;
+	libPhantom_Roles[c_phantomRole_Paladin].minCount = 1;
+	libPhantom_Roles[c_phantomRole_Paladin].maxCount = 0;
+	libPhantom_Roles[c_phantomRole_Paladin].incomeMinerals = 5;
+	libPhantom_Roles[c_phantomRole_Paladin].incomeGas = 5;
+	libPhantom_Roles[c_phantomRole_Paladin].onStrengthen = null;
+	libPhantom_Roles[c_phantomRole_Paladin].periodicStrengthenTimer = 0;
+	libPhantom_Roles[c_phantomRole_Paladin].onDeath = null;
+	libPhantom_Roles[c_phantomRole_Paladin].revealAlliesAt = -1;
+	libPhantom_Roles[c_phantomRole_Paladin].broadcastReveal = false;
+	libPhantom_Roles[c_phantomRole_Paladin].impersonateRole = -1;
+	libPhantom_Roles[c_phantomRole_Paladin].populationCap = 200;
+	
+	// Setup Phantom role
+	libPhantom_Roles[c_phantomRole_Phantom].roleName = "Phantom";
+	libPhantom_Roles[c_phantomRole_Phantom].pluralRoleName = "Phantoms";
+	libPhantom_Roles[c_phantomRole_Phantom].colorCode = "ff0000";
+	libPhantom_Roles[c_phantomRole_Phantom].objective = "Discover your Phantom allies and kill everyone else.";
+	libPhantom_Roles[c_phantomRole_Phantom].description = "The deceiver role; allied with only other Phantoms, the Phantoms must encourage strife and ultimately slay everyone else.";
+	libPhantom_Roles[c_phantomRole_Phantom].allianceMask = c_phantomAllianceMask_Evil;
+	libPhantom_Roles[c_phantomRole_Phantom].minCount = 1;
+	libPhantom_Roles[c_phantomRole_Phantom].maxCount = 0;
+	libPhantom_Roles[c_phantomRole_Phantom].incomeMinerals = 5;
+	libPhantom_Roles[c_phantomRole_Phantom].incomeGas = 5;
+	libPhantom_Roles[c_phantomRole_Phantom].onStrengthen = TriggerCreate("libPhantom_TriggerPeriodicPhantomStrengthen");
+	libPhantom_Roles[c_phantomRole_Phantom].periodicStrengthenTimer = 600;
+	libPhantom_Roles[c_phantomRole_Phantom].mineralIncomeStrengthenAmt = 5;
+	libPhantom_Roles[c_phantomRole_Phantom].gasIncomeStrengthenAmt = 5;
+	libPhantom_Roles[c_phantomRole_Phantom].supplyIncreaseAmt = 20;
+	libPhantom_Roles[c_phantomRole_Phantom].onDeath = null;
+	libPhantom_Roles[c_phantomRole_Phantom].revealAlliesAt = 1500; // 25 minutes
+	libPhantom_Roles[c_phantomRole_Phantom].broadcastReveal = true;
+	libPhantom_Roles[c_phantomRole_Phantom].impersonateRole = -1;
+	libPhantom_Roles[c_phantomRole_Phantom].populationCap = 200;
+	
+	// Setup Game Modes
+	libPhantom_GameModes[c_phantomGameMode_GoodVsEvil].modeName = "<c val=\"00ff00\">Good</c> vs <c val=\"ff0000\">Evil</c>";
+	libPhantom_GameModes[c_phantomGameMode_GoodVsEvil].plainName = "Good vs Evil";
+	libPhantom_GameModes[c_phantomGameMode_GoodVsEvil].participatingRoles = (1 << c_phantomRole_Slayer) | (1 << c_phantomRole_Paladin) | (1 << c_phantomRole_Phantom);
+	libPhantom_GameModes[c_phantomGameMode_GoodVsEvil].onModeSelected = TriggerCreate("libPhantom_TriggerGoodVersusEvilSelected");
+	libPhantom_GameModes[c_phantomGameMode_GoodVsEvil].shortDescription = "Up to 4 Slayers, 2 Paladins, and 2 Phantoms duke it out";
+	libPhantom_GameModes[c_phantomGameMode_GoodVsEvil].description = "The most popular game mode, Good vs Evil focuses on teamwork between Paladins and Slayers to identify the Phantoms and kill them.";
+	
+	libPhantom_GameModes[c_phantomGameMode_SoloPhantom].modeName = "<c val=\"ff0000\">Solo Phantom</c>";
+	libPhantom_GameModes[c_phantomGameMode_SoloPhantom].plainName = "Solo Phantom";
+	libPhantom_GameModes[c_phantomGameMode_SoloPhantom].participatingRoles = (1 << c_phantomRole_Slayer) | (1 << c_phantomRole_Phantom);
+	libPhantom_GameModes[c_phantomGameMode_SoloPhantom].onModeSelected = TriggerCreate("libPhantom_TriggerSoloPhantomSelected");
+	libPhantom_GameModes[c_phantomGameMode_SoloPhantom].shortDescription = "One Phantom vs Everyone";
+	libPhantom_GameModes[c_phantomGameMode_SoloPhantom].description = "Solo Phantom is the most basic of the roles. One Phantom is chosen at the beginning and must outlast up to 7 Slayers and kill them all.";
+	
+	// Setup Game Variants
+	libPhantom_GameVariants[c_phantomGameVariantGroup_Resources].name = "Resources";
+	libPhantom_GameVariants[c_phantomGameVariantGroup_Resources].variants[0].name = "Scarce";
+	libPhantom_GameVariants[c_phantomGameVariantGroup_Resources].variants[0].tooltip = "Resources will be exhausted very quickly.";
+	libPhantom_GameVariants[c_phantomGameVariantGroup_Resources].variants[0].onActivate = TriggerCreate("libPhantom_TriggerGameVariantResourcesScarceSelected");
+	libPhantom_GameVariants[c_phantomGameVariantGroup_Resources].variants[1].name = "Normal";
+	libPhantom_GameVariants[c_phantomGameVariantGroup_Resources].variants[1].tooltip = "Resources will need to be replaced as the game goes on.";
+	libPhantom_GameVariants[c_phantomGameVariantGroup_Resources].variants[1].onActivate = TriggerCreate("libPhantom_TriggerGameVariantResourcesNormalSelected");
+	libPhantom_GameVariants[c_phantomGameVariantGroup_Resources].variants[2].name = "Bountiful";
+	libPhantom_GameVariants[c_phantomGameVariantGroup_Resources].variants[2].tooltip = "Resources will almost never run out";
+	libPhantom_GameVariants[c_phantomGameVariantGroup_Resources].variants[2].onActivate = TriggerCreate("libPhantom_TriggerGameVariantResourcesBountifulSelected");
+	
+	libPhantom_StandaloneGameVariants[c_phantomGameVariant_QuickStart].name = "Quick Start";
+	libPhantom_StandaloneGameVariants[c_phantomGameVariant_QuickStart].tooltip = "Start with 1000 extra minerals and vespene gas.";
+	libPhantom_StandaloneGameVariants[c_phantomGameVariant_QuickStart].onActivate = TriggerCreate("libPhantom_TriggerGameVariantQuickStartSelected");
+	
+	// Since this is hardcoded, it belongs here.
+	TriggerAddEventChatMessage(TriggerCreate("libPhantom_TriggerChatHandled"), c_playerAny, "", false);
+}
+
+// Galaxy bug: Must end on newline or errors will be reported on the wrong line

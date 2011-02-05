@@ -1,0 +1,24 @@
+// IDs of Roles
+// This list is also used to maintain role masks for participating roles in game modes.
+// To specify a role mask, use (1 << c_phantomRole<*>). You may then use bitwise or (|) to
+// create a mask of multiple roles.
+// Ex: Slayer + Paladin = (1 << c_phantomRole_Slayer) | (1 << c_phantomRole_Paladin)
+const int c_phantomRole_Slayer 				= 0;
+const int c_phantomRole_Paladin 			= 1;
+const int c_phantomRole_Phantom 			= 2;
+const int c_phantomRole_MAX					= 3; // End Marker
+
+// IDs of Game Modes
+const int c_phantomGameMode_GoodVsEvil = 0;
+const int c_phantomGameMode_SoloPhantom = 1;
+const int c_phantomGameMode_MAX = 2;
+
+// Votable Game Options (Standalone)
+const int c_phantomGameVariant_QuickStart	= 0;
+const int c_phantomGameVariant_MAX			= 1;
+
+// Grouped Game Options
+const int c_phantomGameVariantGroup_Resources	= 0;
+const int c_phantomGameVariantGroup_MAX			= 1;
+
+// Galaxy bug: Must end on newline or errors will be reported on the wrong line

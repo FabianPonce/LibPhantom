@@ -1,0 +1,220 @@
+bool libPhantom_TriggerGoodVersusEvilSelected(bool checkConds, bool runActions)
+{
+	// Adjust roles to fit GvE specifications. (2 pallies/phantoms)
+	libPhantom_Roles[c_phantomRole_Phantom].maxCount = 2;
+	libPhantom_Roles[c_phantomRole_Paladin].maxCount = 2;
+	return true;
+}
+
+bool libPhantom_TriggerSoloPhantomSelected(bool checkConds, bool runActions)
+{
+	// Adjust roles to fit Solo Phantom rules.
+	libPhantom_Roles[c_phantomRole_Phantom].maxCount = 1;
+	return true;
+}
+
+bool libPhantom_TriggerChatHandled(bool checkConds, bool runActions)
+{
+	int i;
+	int[c_phantomRole_MAX] roleCount;
+	string message = StringCase(EventChatMessage(false), false);
+	int player = EventPlayer();
+	string param;
+	playergroup g;
+
+	if( StringSub(message, 1, 8) == "-whatami" ) {
+		libPhantom_SendInformationMessageToGroup( PlayerGroupSingle(player), "You are a " + libPhantom_BuildRoleName(libPhantom_GetPlayerRole(player, true)) + "." );
+	} else if( StringSub(message, 1, 9) == "-gamemode" ) {
+		libPhantom_SendInformationMessageToGroup( PlayerGroupSingle(player), "The game mode is " + libPhantom_GetCurrentGameModeName() + ".");
+	} else if( StringSub(message, 1, 7) == "-unally" ) {
+		param = StringSub(message, 9, StringLength(message));
+		if( StringEqual(param, "all", false) ) {
+			g = PlayerGroupActive();
+			PlayerGroupRemove(g, player);
+			PlayerGroupLoopBegin(g);
+			while(!PlayerGroupLoopDone())
+			{
+				i = PlayerGroupLoopCurrent();
+				libNtve_gf_SetAllianceOneWay(player, i, 5);
+				libPhantom_SetVisionMapVisioned(player, i, false); // for when/if vision comes back, apply proper vision setting
+				PlayerGroupLoopStep();
+			}
+			PlayerGroupLoopEnd();
+			libPhantom_SendInformationMessageToGroupText( PlayerGroupSingle(player), StringToText("You have unallied everyone."));
+			return true;
+		}
+		i = libPhantom_ConvertColorToPlayer(param);
+		// Don't unally if invalid color, or color is ourself.
+		if( i != -1 && i != player )
+		{
+			libPhantom_SetVisionMapVisioned(player, i, false);
+			libNtve_gf_SetAllianceOneWay( player, i, 5 );
+			libPhantom_SendInformationMessageToGroupText( PlayerGroupSingle(player), StringToText("You have unallied ") + libPhantom_GetColoredPlayerName(i) + StringToText("."));
+		}
+	} else if( StringSub(message, 1, 5) == "-ally" ) {
+		param = StringSub(message, 7, StringLength(message));
+		if( StringEqual(param, "all", false) ) {
+			g = PlayerGroupActive();
+			PlayerGroupRemove(g, player);
+			PlayerGroupLoopBegin(g);
+			while(!PlayerGroupLoopDone())
+			{
+				i = PlayerGroupLoopCurrent();
+				if( libPhantom_HasMapFlag(c_phantomMapFlag_NoSharedVision) ) {
+					libPhantom_SetVisionMapVisioned(player, i, true); // for when/if vision comes back, apply proper vision setting
+					libNtve_gf_SetAllianceOneWay(player, i, 0);
+				} else {
+					libNtve_gf_SetAllianceOneWay( player, i, 1 );
+				}
+				PlayerGroupLoopStep();
+			}
+			PlayerGroupLoopEnd();
+			libPhantom_SendInformationMessageToGroupText( PlayerGroupSingle(player), StringToText("You have allied everyone."));
+			return true;
+		}
+		i = libPhantom_ConvertColorToPlayer(param);
+		// Don't ally if invalid color, or color is ourself.
+		if( i != -1 && i != player )
+		{
+			libPhantom_SetVisionMapVisioned(player, i, true);
+			if( libPhantom_HasMapFlag(c_phantomMapFlag_NoSharedVision) ) {
+				libNtve_gf_SetAllianceOneWay(player, i, 0);
+			} else {
+				libNtve_gf_SetAllianceOneWay( player, i, 1 );
+			}
+			libPhantom_SendInformationMessageToGroupText( PlayerGroupSingle(player), StringToText("You have allied ") + libPhantom_GetColoredPlayerName(i) + StringToText("."));
+		}
+	} else if( StringSub(message, 1, 13) == "-phantomstats" ) {
+		libPhantom_SendInformationMessageToGroup( PlayerGroupSingle(player), "The " + libPhantom_BuildRoleName(c_phantomRole_Phantom) + "'s current strength is:<n />" + 
+			"Mineral Income: " + IntToString(libPhantom_Roles[c_phantomRole_Phantom].incomeMinerals) + "<n />" +
+			"Gas Income: " + IntToString(libPhantom_Roles[c_phantomRole_Phantom].incomeGas) + "<n />" +
+			"Supply Cap: " + IntToString(libPhantom_Roles[c_phantomRole_Phantom].populationCap)
+		);
+	} else if( StringSub(message, 1, 17) == "-playersremaining" || StringSub(message, 1, 17) == "-remainingplayers" ) {
+		i = 0;
+		while( i < c_phantomMaxPlayers )
+		{
+			if( libPhantom_IsPlayerAlive(i) ) {
+				roleCount[libPhantom_GetPlayerRole(i, false)] += 1;
+			}
+			i += 1;
+		}
+		
+		i = 0;
+		while( i < c_phantomRole_MAX )
+		{
+			if( roleCount[i] == 0 ) {
+				i += 1;
+				continue;
+			}
+			
+			libPhantom_SendInformationMessageToGroup( PlayerGroupSingle(player), "Remaining " + libPhantom_BuildPluralRoleName(i) + ": " + IntToString(roleCount[i]) );
+			i += 1;
+		}
+	}
+	return true;
+}
+
+bool libPhantom_TriggerGameVariantQuickStartSelected(bool checkConds, bool runActions)
+{
+	PlayerGroupLoopBegin(PlayerGroupActive());
+	while( !PlayerGroupLoopDone() )
+	{
+		PlayerModifyPropertyInt(PlayerGroupLoopCurrent(), c_playerPropMinerals, c_playerPropOperSetTo, 1000);
+		PlayerModifyPropertyInt(PlayerGroupLoopCurrent(), c_playerPropVespene, c_playerPropOperSetTo, 1000);
+		PlayerGroupLoopStep();
+	}
+	PlayerGroupLoopEnd();
+	return true;
+}
+
+bool libPhantom_TriggerGameVariantResourcesScarceSelected(bool checkConds, bool runActions)
+{
+	unitgroup geysers;
+	unitgroup minerals = UnitGroup("MineralField", c_playerAny, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0);
+	libNtve_gf_AddUnitGroupToUnitGroup(UnitGroup("RichMineralField", c_playerAny, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0), minerals);
+	UnitGroupLoopBegin(minerals);
+	while( !UnitGroupLoopDone() )
+	{
+		UnitSetPropertyFixed(UnitGroupLoopCurrent(), c_unitPropResources, 2000);
+		UnitGroupLoopStep();
+	}
+	UnitGroupLoopEnd();
+	
+	geysers = UnitGroup("VespeneGeyser", c_playerAny, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0);
+	libNtve_gf_AddUnitGroupToUnitGroup(UnitGroup("RichVespeneGeyser", c_playerAny, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0), geysers);
+	UnitGroupLoopBegin(geysers);
+	while( !UnitGroupLoopDone() )
+	{
+		UnitSetPropertyFixed(UnitGroupLoopCurrent(), c_unitPropResources, 4000);
+		UnitGroupLoopStep();
+	}
+	UnitGroupLoopEnd();
+	return true;
+}
+
+bool libPhantom_TriggerGameVariantResourcesNormalSelected(bool checkConds, bool runActions)
+{
+	unitgroup geysers;
+	unitgroup minerals = UnitGroup("MineralField", c_playerAny, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0);
+	libNtve_gf_AddUnitGroupToUnitGroup(UnitGroup("RichMineralField", c_playerAny, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0), minerals);
+	UnitGroupLoopBegin(minerals);
+	while( !UnitGroupLoopDone() )
+	{
+		UnitSetPropertyFixed(UnitGroupLoopCurrent(), c_unitPropResources, 4000);
+		UnitGroupLoopStep();
+	}
+	UnitGroupLoopEnd();
+	
+	geysers = UnitGroup("VespeneGeyser", c_playerAny, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0);
+	libNtve_gf_AddUnitGroupToUnitGroup(UnitGroup("RichVespeneGeyser", c_playerAny, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0), geysers);
+	UnitGroupLoopBegin(geysers);
+	while( !UnitGroupLoopDone() )
+	{
+		UnitSetPropertyFixed(UnitGroupLoopCurrent(), c_unitPropResources, 8000);
+		UnitGroupLoopStep();
+	}
+	UnitGroupLoopEnd();
+	return true;
+}
+
+bool libPhantom_TriggerGameVariantResourcesBountifulSelected(bool checkConds, bool runActions)
+{
+	unitgroup geysers;
+	unitgroup minerals = UnitGroup("MineralField", c_playerAny, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0);
+	libNtve_gf_AddUnitGroupToUnitGroup(UnitGroup("RichMineralField", c_playerAny, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0), minerals);
+	UnitGroupLoopBegin(minerals);
+	while( !UnitGroupLoopDone() )
+	{
+		UnitSetPropertyFixed(UnitGroupLoopCurrent(), c_unitPropResources, 8000);
+		UnitGroupLoopStep();
+	}
+	UnitGroupLoopEnd();
+	
+	geysers = UnitGroup("VespeneGeyser", c_playerAny, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0);
+	libNtve_gf_AddUnitGroupToUnitGroup(UnitGroup("RichVespeneGeyser", c_playerAny, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0), geysers);
+	UnitGroupLoopBegin(geysers);
+	while( !UnitGroupLoopDone() )
+	{
+		UnitSetPropertyFixed(UnitGroupLoopCurrent(), c_unitPropResources, 16000);
+		UnitGroupLoopStep();
+	}
+	UnitGroupLoopEnd();
+	return true;
+}
+
+bool libPhantom_TriggerPeriodicPhantomStrengthen(bool checkConds, bool runActions)
+{	
+	// Default: Increase strengthen amount by 5 if strengthen amount is 5.
+	if( libPhantom_Roles[c_phantomRole_Phantom].mineralIncomeStrengthenAmt == 5 )
+	{
+		libPhantom_Roles[c_phantomRole_Phantom].mineralIncomeStrengthenAmt = 10;
+	}
+	
+	if( libPhantom_Roles[c_phantomRole_Phantom].gasIncomeStrengthenAmt == 5 )
+	{
+		libPhantom_Roles[c_phantomRole_Phantom].gasIncomeStrengthenAmt = 10;
+	}
+	return true;
+}
+// Galaxy bug: Must end on newline or errors will be reported on the wrong line
