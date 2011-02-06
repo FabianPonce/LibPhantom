@@ -115,6 +115,9 @@ int[c_phantomMaxPlayers] libPhantom_PlayerRoles;
 bool[c_phantomMaxPlayers] libPhantom_IsAlive;
 int libPhantom_GameTime;
 bool libPhantom_GameStarted;
+bool[c_phantomMaxPlayers] libPhantom_RolePrefferedChosen;
+int[c_phantomMaxPlayers] libPhantom_PreferredRole;
+playergroup[c_phantomRole_MAX] libPhantom_RolePreferredPlayers;
 int[3+c_phantomGameVariantGroup_MAX] libPhantom_VoteDialogs;
 bool[c_phantomMaxPlayers] libPhantom_BPlayerVoted;
 int[c_phantomMaxPlayers] libPhantom_AllianceDialog;
@@ -125,6 +128,8 @@ int[c_phantomMaxPlayers] libPhantom_InitialMinerals;
 int[c_phantomMaxPlayers] libPhantom_InitialGas;
 bool[c_phantomMaxPlayers] libPhantom_HidingSupplyCap;
 int[c_phantomMaxPlayers] libPhantom_DeceptionCheckbox;
+int[c_phantomMaxPlayers] libPhantom_ModeVotedFor;
+int[c_phantomMaxPlayers][c_phantomRole_MAX] libPhantom_RoleVoteButtons;
 int libPhantom_AnnouncementMessageDialog;
 bank[c_phantomMaxPlayers] libPhantom_PlayerBanks;
 
@@ -341,6 +346,11 @@ bool libPhantom_HasSufficientPlayers()
 	}
 	
 	return (x > c);
+}
+
+string libPhantom_BuildPlainRoleName(int r)
+{
+	return libPhantom_Roles[r].roleName;
 }
 
 // Returns a string containing the color-coded role name.
@@ -1251,6 +1261,7 @@ void libPhantom_AssignPlayersToRoles()
 	int remainingPlayers;
 	bool b;
 	playergroup g = PlayerGroupCopy(PlayerGroupActive());
+	remainingPlayers = PlayerGroupCount(g);
 	// So, here's the basic process:
 	// we'll iterate over all of the participating roles and for each player in minCount, we'll 
 	// assign a player to that role. This ensures we have the correct minimums for everything.
@@ -1263,15 +1274,32 @@ void libPhantom_AssignPlayersToRoles()
 			req = libPhantom_Roles[i].minCount;
 			while( req > 0 ) 
 			{
-				// Pick a random active player.
-				p = PlayerGroupPlayer(g, RandomInt(1, PlayerGroupCount(g)));
-				// Remove player from group, we can't pick him again for another role.
-				PlayerGroupRemove(g, p); 
+				if( PlayerGroupCount(libPhantom_RolePreferredPlayers[i]) > 0 )
+				{
+					// Pick a player from the preferred group
+					p = PlayerGroupPlayer(libPhantom_RolePreferredPlayers[i], RandomInt(1, PlayerGroupCount(libPhantom_RolePreferredPlayers[i])));
+					// Remove player from group
+					PlayerGroupRemove(libPhantom_RolePreferredPlayers[i], p);
+					// Remove from main group as well.
+					PlayerGroupRemove(g, p);
+				}
+				else
+				{
+					// Pick a random active player.
+					p = PlayerGroupPlayer(g, RandomInt(1, PlayerGroupCount(g)));
+					// Remove player from group, we can't pick him again for another role.
+					PlayerGroupRemove(g, p); 
+					// Remove from the preferred group as well.
+					PlayerGroupRemove(libPhantom_RolePreferredPlayers[libPhantom_PreferredRole[p]], p);
+				}
+				
 				// Set this player to alive and all that jazz.
 				libPhantom_SetPlayerAliveOrDead(p, true);
 				// And now set his role to this.
 				libPhantom_SetPlayerRole(p, i);
-								
+				
+				remainingPlayers -= 1;
+					
 				// Decrement, re-loop the rest (if any)
 				req -= 1;
 			}
@@ -1288,7 +1316,6 @@ void libPhantom_AssignPlayersToRoles()
 	}
 		
 	// So now we have the minimums set in their roles. Let's evenly sort out the remaining players now.
-	remainingPlayers = PlayerGroupCount(g);
 	// Simple method for now, let's just iterate over and add where we can.
 	i = 0;
 	while(remainingPlayers > 0)
@@ -1308,11 +1335,25 @@ void libPhantom_AssignPlayersToRoles()
 		if( b &&
 		   (libPhantom_Roles[i].maxCount <= 0 || libPhantom_PlayerCountInRole(i) < libPhantom_Roles[i].maxCount) )
 		{
-			// Add a player into this role.
-			// Pick a random player
-			p = PlayerGroupPlayer(g, RandomInt(1, PlayerGroupCount(g)));
-			// Remove player from group, we can't pick him again.
-			PlayerGroupRemove(g, p);
+			if( PlayerGroupCount(libPhantom_RolePreferredPlayers[i]) > 0 )
+			{
+				// Pick a player from the preferred group
+				p = PlayerGroupPlayer(libPhantom_RolePreferredPlayers[i], RandomInt(1, PlayerGroupCount(libPhantom_RolePreferredPlayers[i])));
+				// Remove player from group
+				PlayerGroupRemove(libPhantom_RolePreferredPlayers[i], p);
+				// Remove from main group as well.
+				PlayerGroupRemove(g, p);
+			}
+			else
+			{
+				// Add a player into this role.
+				// Pick a random player
+				p = PlayerGroupPlayer(g, RandomInt(1, PlayerGroupCount(g)));
+				// Remove player from group, we can't pick him again.
+				PlayerGroupRemove(g, p);
+				// Remove from the preferred group as well.
+				PlayerGroupRemove(libPhantom_RolePreferredPlayers[libPhantom_PreferredRole[p]], p);
+			}
 			// Set him to alive status
 			libPhantom_SetPlayerAliveOrDead(p, true);
 			// And set his role.
@@ -1357,6 +1398,47 @@ void libPhantom_StrengthenRole(int r)
 	}
 	
 	libPhantom_SendInformationMessageToAll("The " + libPhantom_BuildPluralRoleName(r) + " grow stronger.");
+}
+
+// Builds a dialog with the roles of the game mode the player voted for, asking him for his preference
+void libPhantom_BuildPreferredRoleDialog(int p)
+{
+	int mode = libPhantom_ModeVotedFor[p]; // the mode we voted for
+	int roleCount = 0;
+	int dialog;
+	int i;
+	int currenty;
+	
+	i = 0;
+	while(i < c_phantomRole_MAX)
+	{
+		if( libPhantom_GameModes[mode].participatingRoles & (1 << i) ) {
+			roleCount += 1;
+		}
+		i += 1;
+	}
+	
+	dialog = DialogCreate(350, 65 * roleCount + 120 + 65, c_anchorCenter, 0, 0, false);
+	DialogSetTitle(dialog, StringToText("Role Preference"));
+	// Now, we must put buttons for each role.
+	currenty = 80;
+	i = 0;
+	while(i < c_phantomRole_MAX)
+	{
+		if( libPhantom_GameModes[mode].participatingRoles & (1 << i) )
+		{
+			// We are adding this role's button.
+			libPhantom_RoleVoteButtons[p][i] = libNtve_gf_CreateDialogItemButton(dialog, 200, 50, c_anchorTop, 0, currenty, StringToText(""), StringToText(libPhantom_BuildPlainRoleName(i)), "");
+			TriggerAddEventDialogControl( TriggerCreate("libPhantom_TriggerChosePreferredRole"), p, DialogControlLastCreated(), c_triggerControlEventTypeClick );
+			currenty += 65;
+		}
+		i += 1;
+	}
+	
+	libNtve_gf_CreateDialogItemButton(dialog, 200, 50, c_anchorTop, 0, currenty, StringToText(""), StringToText("Random"), "");
+	TriggerAddEventDialogControl( TriggerCreate("libPhantom_TriggerChosePreferredRole"), p, DialogControlLastCreated(), c_triggerControlEventTypeClick );
+	
+	DialogSetVisible(dialog, PlayerGroupSingle(p), true);
 }
 
 include "Phantom/InternalTriggers"

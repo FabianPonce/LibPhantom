@@ -65,6 +65,7 @@ bool libPhantom_TriggerClickVoteButton(bool checkConds, bool runActions)
 		{
 			// We voted for this
 			libPhantom_GameModes[i].votes += 1;
+			libPhantom_ModeVotedFor[player] = i;
 			break;
 		}
 		i += 1;
@@ -102,6 +103,45 @@ bool libPhantom_TriggerClickVoteButton(bool checkConds, bool runActions)
 	
 	// Hide the vote dialog now
 	TriggerExecute(TriggerCreate("libPhantom_TriggerClickSkipButton"), true, true);
+	TriggerExecute(TriggerCreate("libPhantom_TriggerAskPreferredRole"), true, true);
+	return true;
+}
+
+bool libPhantom_TriggerAskPreferredRole(bool checkConds, bool runActions)
+{
+	libPhantom_BuildPreferredRoleDialog(EventPlayer());
+	return true;
+}
+
+bool libPhantom_TriggerChosePreferredRole(bool checkConds, bool runActions)
+{
+	int i = 0;
+	int p = EventPlayer();
+	
+	// No choosing twice
+	if( libPhantom_RolePrefferedChosen[p] ) {
+		return true;
+	}
+	
+	while(i < c_phantomRole_MAX)
+	{
+		if( libPhantom_RoleVoteButtons[p][i] == EventDialogControl() )
+		{
+			// We preferred this role
+			libPhantom_RolePrefferedChosen[p] = true;
+			libPhantom_PreferredRole[p] = i;
+			if( libPhantom_RolePreferredPlayers[i] == null ) {
+				libPhantom_RolePreferredPlayers[i] = PlayerGroupEmpty();
+			}
+			PlayerGroupAdd(libPhantom_RolePreferredPlayers[i], p);
+			DialogDestroy(DialogControlGetDialog(EventDialogControl()));
+			return true;
+		}
+		i += 1;
+	}
+	
+	// We get here if we pick Random.
+	DialogDestroy(DialogControlGetDialog(EventDialogControl()));
 	return true;
 }
 
