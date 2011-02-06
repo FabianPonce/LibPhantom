@@ -228,6 +228,8 @@ bool libPhantom_TriggerMapInitialization(bool checkConds, bool runActions)
 	int dialog;
 	int seconds = 30;
 	
+	libPhantom_LoadBanks();
+	
 	FogSetEnabled(false);
 	GameSetSpeedValue(c_gameSpeedFaster);
 	
@@ -301,6 +303,8 @@ bool libPhantom_TriggerMapInitialization(bool checkConds, bool runActions)
 		
 		// Do auto-harvest.
 		libLbty_gf_OrderWorkerstoGatherNearbyResources(RegionEntireMap(), i);
+		
+		libPhantom_PlayerIncreasePlayedGamesScore(i);
 		i += 1;
 	}
 	

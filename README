@@ -1,4 +1,4 @@
 Place Phantom directory into the root level of your SC2Map MPQ archive.
-In custom script, include "Phantom/Phantom" and then run init function libPhantom_InitLib().
+Import the LibPhantomLoader.SC2Lib Trigger Library into your map to handle the loading process of the library.
 
 Modify all Phantom/Map*.galaxy files to your needs.

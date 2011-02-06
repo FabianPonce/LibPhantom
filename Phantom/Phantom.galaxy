@@ -126,6 +126,7 @@ int[c_phantomMaxPlayers] libPhantom_InitialGas;
 bool[c_phantomMaxPlayers] libPhantom_HidingSupplyCap;
 int[c_phantomMaxPlayers] libPhantom_DeceptionCheckbox;
 int libPhantom_AnnouncementMessageDialog;
+bank[c_phantomMaxPlayers] libPhantom_PlayerBanks;
 
 bool[c_phantomMaxPlayers][c_phantomMaxPlayers] libPhantom_VisionMap;
 
@@ -160,6 +161,55 @@ void libPhantom_InitLib()
 	TriggerAddEventTimePeriodic(TriggerCreate("libPhantom_TriggerPeriodicMineralTracker"), 0, c_timeReal);
 	TriggerAddEventTimePeriodic(TriggerCreate("libPhantom_TriggerPeriodicGameLoop"), 1, c_timeReal);
 	TriggerAddEventPlayerLeft(TriggerCreate("libPhantom_TriggerPlayerLeft"), c_playerAny, c_gameResultUndecided);
+}
+
+void libPhantom_LoadBanks()
+{
+	int i = 0;
+	while(i < c_phantomMaxPlayers)
+	{
+		if( !PlayerGroupHasPlayer(PlayerGroupActive(), i) )
+		{
+			i += 1;
+			continue;
+		}
+		
+		libPhantom_PlayerBanks[i] = BankLoad("LibPhantom", i);
+		BankOptionSet(libPhantom_PlayerBanks[i], c_bankOptionSignature, true);
+		if( !BankVerify(libPhantom_PlayerBanks[i]) ) {
+			BankSectionRemove(libPhantom_PlayerBanks[i], "Score");
+		}
+		i += 1;
+	}
+}
+
+void libPhantom_PlayerIncreasePlayedGamesScore(int p)
+{
+	BankValueSetFromInt(libPhantom_PlayerBanks[p], "Score", "Games", BankValueGetAsInt(libPhantom_PlayerBanks[p], "Score", "Games") + 1);
+	BankSave(libPhantom_PlayerBanks[p]);
+}
+
+void libPhantom_PlayerIncreaseWonGamesScore(int p)
+{
+	BankValueSetFromInt(libPhantom_PlayerBanks[p], "Score", "Wins", BankValueGetAsInt(libPhantom_PlayerBanks[p], "Score", "Wins") + 1);
+	BankSave(libPhantom_PlayerBanks[p]);
+}
+
+int libPhantom_PlayerGetPlayedGames(int p)
+{
+	// We must subtract 1 since this game is always included in the statistic.
+	// Otherwise it would appear as if we'd already lost this game. :P
+	return BankValueGetAsInt(libPhantom_PlayerBanks[p], "Score", "Games") - 1;
+}
+
+int libPhantom_PlayerGetWonGames(int p)
+{
+	return BankValueGetAsInt(libPhantom_PlayerBanks[p], "Score", "Wins"); 
+}
+
+int libPhantom_PlayerGetLostGames(int p)
+{
+	return libPhantom_PlayerGetPlayedGames(p) - libPhantom_PlayerGetWonGames(p);
 }
 
 void libPhantom_SetMapFlag(int flag)
@@ -608,6 +658,7 @@ void libPhantom_EliminatePlayer(int p)
 		{
 			if( libPhantom_IsPlayerAlive(i) ) {
 				GameOver(i, c_gameOverVictory, true, true);
+				libPhantom_PlayerIncreaseWonGamesScore(i);
 			} else if( PlayerGroupHasPlayer(PlayerGroupActive(), i) ){
 				GameOver(i, c_gameOverDefeat, true, true);
 			}
@@ -743,19 +794,26 @@ void libPhantom_ToggleAllianceDialog(int player)
 	CurrentY = 110;
 	while(i < c_phantomMaxPlayers)
 	{
-		if( i != player && PlayerGroupHasPlayer(PlayerGroupActive(), i) )
+		if( PlayerGroupHasPlayer(PlayerGroupActive(), i) )
 		{
 			// Draw this dude's UI box.
 			libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 50, CurrentY, PlayerName(i), libNtve_gf_ConvertPlayerColorToColor(PlayerGetColorIndex(i, false)), false, 1.0);
+			libNtve_gf_SetDialogItemTooltip(DialogControlLastCreated(), StringToText("Wins: " + IntToString(libPhantom_PlayerGetWonGames(i)) + "<n />Losses: " + IntToString(libPhantom_PlayerGetLostGames(i))), PlayerGroupSingle(player));
 			libPhantom_AllianceCheckbox[player][i] = libNtve_gf_CreateDialogItemCheckBox(dialog, 35, 35, c_anchorTopLeft, 200, CurrentY-10, StringToText(""), false);
 			// Are we allied? If so, check the box!
 			if( PlayerGetAlliance(player, c_allianceIdPassive, i) ) {
 				libNtve_gf_SetDialogItemChecked(DialogControlLastCreated(), true, PlayerGroupSingle(player));
 			}
+			if( i == player ) {
+				DialogControlSetEnabled(DialogControlLastCreated(), PlayerGroupSingle(player), false);
+			}
 			libPhantom_VisionCheckbox[player][i] = libNtve_gf_CreateDialogItemCheckBox(dialog, 35, 35, c_anchorTopLeft, 300, CurrentY-10, StringToText(""), false);
 			// Are we visioned? If so, check the box!
 			if( PlayerGetAlliance(player, c_allianceIdVision, i) ) {
 				libNtve_gf_SetDialogItemChecked(DialogControlLastCreated(), true, PlayerGroupSingle(player));
+			}
+			if( i == player ) {
+				DialogControlSetEnabled(DialogControlLastCreated(), PlayerGroupSingle(player), false);
 			}
 			
 			// c_phantomMapFlag_NoSharedVision in effect? Lock the vision checkbox.
