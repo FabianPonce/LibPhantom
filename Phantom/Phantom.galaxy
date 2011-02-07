@@ -49,6 +49,8 @@ struct PhantomRole
 	
 	int impersonateRole;	// The ID of a role to impersonate. Your true role will only be revealed once you die. (-1 to disable)
 	
+	bool isMeta;	// Is this role a meta role? ie. not actually used.
+	
 	// Internal use
 	int myMask;			// Role mask for this role
 	bool blockStrengthen;	// Whether or not this role's strengthen is disabled.
@@ -528,6 +530,10 @@ void libPhantom_BuildHelpMenuTips()
 	desc = "";
 	while(i < c_phantomRole_MAX)
 	{
+		if( libPhantom_Roles[i].isMeta ) {
+			i += 1;
+			continue;
+		}
 		desc += libPhantom_BuildRoleName(i) + "<n />";
 		desc += libPhantom_Roles[i].description + "<n /><n />";
 		i += 1;
@@ -1150,21 +1156,6 @@ void libPhantom_TallyVotes()
 	int mostVotes;
 	int mostVotesAmt = -1;
 	
-	// Determine the game mode with the most votes.
-	i = 0;
-	while(i < c_phantomGameMode_MAX)
-	{
-		if( libPhantom_GameModes[i].votes > mostVotesAmt )
-		{
-			mostVotes = i;
-			mostVotesAmt = libPhantom_GameModes[i].votes;
-		}
-		i += 1;
-	}
-	
-	// Take the winner, and activate that game mode.
-	libPhantom_SetCurrentGameMode( mostVotes );
-	
 	// Game Variant Winners
 	i = 0;
 	while(i < c_phantomGameVariantGroup_MAX)
@@ -1199,6 +1190,21 @@ void libPhantom_TallyVotes()
 		}
 		i += 1;
 	}
+	
+	// Determine the game mode with the most votes.
+	i = 0;
+	while(i < c_phantomGameMode_MAX)
+	{
+		if( libPhantom_GameModes[i].votes > mostVotesAmt )
+		{
+			mostVotes = i;
+			mostVotesAmt = libPhantom_GameModes[i].votes;
+		}
+		i += 1;
+	}
+	
+	// Take the winner, and activate that game mode.
+	libPhantom_SetCurrentGameMode( mostVotes );
 }
 
 void libPhantom_ResetGameVariantGroup(int player, int group, int ignore)
@@ -1428,14 +1434,14 @@ void libPhantom_BuildPreferredRoleDialog(int p)
 		if( libPhantom_GameModes[mode].participatingRoles & (1 << i) )
 		{
 			// We are adding this role's button.
-			libPhantom_RoleVoteButtons[p][i] = libNtve_gf_CreateDialogItemButton(dialog, 200, 50, c_anchorTop, 0, currenty, StringToText(""), StringToText(libPhantom_BuildPlainRoleName(i)), "");
+			libPhantom_RoleVoteButtons[p][i] = libNtve_gf_CreateDialogItemButton(dialog, 250, 50, c_anchorTop, 0, currenty, StringToText(""), StringToText(libPhantom_BuildPlainRoleName(i)), "");
 			TriggerAddEventDialogControl( TriggerCreate("libPhantom_TriggerChosePreferredRole"), p, DialogControlLastCreated(), c_triggerControlEventTypeClick );
 			currenty += 65;
 		}
 		i += 1;
 	}
 	
-	libNtve_gf_CreateDialogItemButton(dialog, 200, 50, c_anchorTop, 0, currenty, StringToText(""), StringToText("Random"), "");
+	libNtve_gf_CreateDialogItemButton(dialog, 250, 50, c_anchorTop, 0, currenty, StringToText(""), StringToText("Random"), "");
 	TriggerAddEventDialogControl( TriggerCreate("libPhantom_TriggerChosePreferredRole"), p, DialogControlLastCreated(), c_triggerControlEventTypeClick );
 	
 	DialogSetVisible(dialog, PlayerGroupSingle(p), true);

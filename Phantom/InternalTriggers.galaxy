@@ -430,30 +430,17 @@ bool libPhantom_TriggerUnitDied(bool checkConds, bool runActions)
 
 bool libPhantom_TriggerPlayerLeft(bool checkConds, bool runActions)
 {
-	int splitMin;
-	int splitGas;
-	playergroup allies;
-	
 	if( !libPhantom_IsGameStarted() || !libPhantom_IsGameOver() ) {
 		libPhantom_EliminatePlayer(EventPlayer());
 	}
 	
 	// Okay, so, here's the deal: Blizzard decided to be stupid and give us no option to disable resource splitting. So we have to handle that shit.
-	// Bleh. So let's figure out how much resources got split, shall we?
-	allies = PlayerGroupAlliance(c_playerGroupAlly, EventPlayer());
-	if( PlayerGroupCount(allies) == 0 )
-	{
-		return true;
-	}
-	splitMin = libPhantom_CurrentMinerals[EventPlayer()] / PlayerGroupCount(allies);
-	splitGas = libPhantom_CurrentGas[EventPlayer()] / PlayerGroupCount(allies);
-	
-	// And now we have to steal their minerals/gas.
-	PlayerGroupLoopBegin(allies);
+	// Bleh. So let's reset everyone's minerals to what they used to be.
+	PlayerGroupLoopBegin(PlayerGroupActive());
 	while( !PlayerGroupLoopDone() )
 	{
-		PlayerModifyPropertyInt(PlayerGroupLoopCurrent(), c_playerPropMinerals, c_playerPropOperSubtract, splitMin);
-		PlayerModifyPropertyInt(PlayerGroupLoopCurrent(), c_playerPropVespene, c_playerPropOperSubtract, splitGas);
+		PlayerModifyPropertyInt(PlayerGroupLoopCurrent(), c_playerPropMinerals, c_playerPropOperSetTo, libPhantom_CurrentMinerals[PlayerGroupLoopCurrent()]);
+		PlayerModifyPropertyInt(PlayerGroupLoopCurrent(), c_playerPropVespene, c_playerPropOperSetTo, libPhantom_CurrentMinerals[PlayerGroupLoopCurrent()]);
 		PlayerGroupLoopStep();
 	}
 	return true;
