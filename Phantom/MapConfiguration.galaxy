@@ -14,7 +14,7 @@ void libPhantom_Configure()
 	libPhantom_Roles[c_phantomRole_Slayer].onStrengthen = null;
 	libPhantom_Roles[c_phantomRole_Slayer].periodicStrengthenTimer = 0;
 	libPhantom_Roles[c_phantomRole_Slayer].onDeath = null;
-	libPhantom_Roles[c_phantomRole_Slayer].revealAlliesAt = -1;
+	libPhantom_Roles[c_phantomRole_Slayer].revealAt = -1;
 	libPhantom_Roles[c_phantomRole_Slayer].broadcastReveal = false;
 	libPhantom_Roles[c_phantomRole_Slayer].impersonateRole = -1;
 	libPhantom_Roles[c_phantomRole_Slayer].populationCap = 200;
@@ -34,10 +34,11 @@ void libPhantom_Configure()
 	libPhantom_Roles[c_phantomRole_Paladin].onStrengthen = null;
 	libPhantom_Roles[c_phantomRole_Paladin].periodicStrengthenTimer = 0;
 	libPhantom_Roles[c_phantomRole_Paladin].onDeath = null;
-	libPhantom_Roles[c_phantomRole_Paladin].revealAlliesAt = -1;
+	libPhantom_Roles[c_phantomRole_Paladin].revealAt = -1;
 	libPhantom_Roles[c_phantomRole_Paladin].broadcastReveal = false;
 	libPhantom_Roles[c_phantomRole_Paladin].impersonateRole = -1;
 	libPhantom_Roles[c_phantomRole_Paladin].populationCap = 200;
+	libPhantom_Roles[c_phantomRole_Paladin].resourceDrainRoleMask = (1 << c_phantomRole_Slayer) | (1 << c_phantomRole_KeeperOfLight) | (1 << c_phantomRole_KeeperOfDarkness);
 	
 	// Setup Phantom role
 	libPhantom_Roles[c_phantomRole_Phantom].roleName = "Phantom";
@@ -50,13 +51,14 @@ void libPhantom_Configure()
 	libPhantom_Roles[c_phantomRole_Phantom].maxCount = 0;
 	libPhantom_Roles[c_phantomRole_Phantom].incomeMinerals = 5;
 	libPhantom_Roles[c_phantomRole_Phantom].incomeGas = 5;
-	libPhantom_Roles[c_phantomRole_Phantom].onStrengthen = TriggerCreate("libPhantom_TriggerPeriodicPhantomStrengthen");
+	libPhantom_Roles[c_phantomRole_Phantom].onStrengthen = null;
 	libPhantom_Roles[c_phantomRole_Phantom].periodicStrengthenTimer = 600;
 	libPhantom_Roles[c_phantomRole_Phantom].mineralIncomeStrengthenAmt = 5;
 	libPhantom_Roles[c_phantomRole_Phantom].gasIncomeStrengthenAmt = 5;
 	libPhantom_Roles[c_phantomRole_Phantom].supplyIncreaseAmt = 20;
 	libPhantom_Roles[c_phantomRole_Phantom].onDeath = null;
-	libPhantom_Roles[c_phantomRole_Phantom].revealAlliesAt = 1500; // 25 minutes
+	libPhantom_Roles[c_phantomRole_Phantom].revealAt = 1500; // 25 minutes
+	libPhantom_Roles[c_phantomRole_Phantom].revealRoleMask = (1 << c_phantomRole_Phantom);
 	libPhantom_Roles[c_phantomRole_Phantom].broadcastReveal = true;
 	libPhantom_Roles[c_phantomRole_Phantom].impersonateRole = -1;
 	libPhantom_Roles[c_phantomRole_Phantom].populationCap = 200;
@@ -91,11 +93,12 @@ void libPhantom_Configure()
 	libPhantom_StandaloneGameVariants[c_phantomGameVariant_QuickStart].name = "Quick Start";
 	libPhantom_StandaloneGameVariants[c_phantomGameVariant_QuickStart].tooltip = "Start with 1000 extra minerals and vespene gas.";
 	libPhantom_StandaloneGameVariants[c_phantomGameVariant_QuickStart].onActivate = TriggerCreate("libPhantom_TriggerGameVariantQuickStartSelected");
-	
+
 	// Since this is hardcoded, it belongs here.
 	TriggerAddEventChatMessage(TriggerCreate("libPhantom_TriggerChatHandled"), c_playerAny, "", false);
 }
 
+// This must be manually specified because some maps may choose to customize team colors
 int libPhantom_ConvertColorToPlayerDefault(string colour)
 {
 	if( colour == "white" ) {
@@ -134,6 +137,8 @@ int libPhantom_ConvertColorToPlayerDefault(string colour)
 		return 14; 
 	} else if( colour == "pink" ) {
 		return 15;
+	} else if( colour == "MAX_COLORS" ) { // Used in color uniqueness code.
+		return 16;
 	}
 
 	return -1;

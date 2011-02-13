@@ -35,8 +35,7 @@ bool libPhantom_TriggerChatHandled(bool checkConds, bool runActions)
 			while(!PlayerGroupLoopDone())
 			{
 				i = PlayerGroupLoopCurrent();
-				libNtve_gf_SetAllianceOneWay(player, i, 5);
-				libPhantom_SetVisionMapVisioned(player, i, false); // for when/if vision comes back, apply proper vision setting
+				libPhantom_AttemptSetAllianceToPlayer(player, i, false, false);
 				PlayerGroupLoopStep();
 			}
 			PlayerGroupLoopEnd();
@@ -47,9 +46,9 @@ bool libPhantom_TriggerChatHandled(bool checkConds, bool runActions)
 		// Don't unally if invalid color, or color is ourself.
 		if( i != -1 && i != player )
 		{
-			libPhantom_SetVisionMapVisioned(player, i, false);
-			libNtve_gf_SetAllianceOneWay( player, i, 5 );
-			libPhantom_SendInformationMessageToGroupText( PlayerGroupSingle(player), StringToText("You have unallied ") + libPhantom_GetColoredPlayerName(i) + StringToText("."));
+			if( libPhantom_AttemptSetAllianceToPlayer(player, i, false, false) ) {
+				libPhantom_SendInformationMessageToGroupText( PlayerGroupSingle(player), StringToText("You have unallied ") + libPhantom_GetColoredPlayerName(i) + StringToText("."));
+			}
 		}
 	} else if( StringSub(message, 1, 5) == "-ally" ) {
 		param = StringSub(message, 7, StringLength(message));
@@ -60,12 +59,7 @@ bool libPhantom_TriggerChatHandled(bool checkConds, bool runActions)
 			while(!PlayerGroupLoopDone())
 			{
 				i = PlayerGroupLoopCurrent();
-				if( libPhantom_HasMapFlag(c_phantomMapFlag_NoSharedVision) ) {
-					libPhantom_SetVisionMapVisioned(player, i, true); // for when/if vision comes back, apply proper vision setting
-					libNtve_gf_SetAllianceOneWay(player, i, 0);
-				} else {
-					libNtve_gf_SetAllianceOneWay( player, i, 1 );
-				}
+				libPhantom_AttemptSetAllianceToPlayer(player, i, true, true);
 				PlayerGroupLoopStep();
 			}
 			PlayerGroupLoopEnd();
@@ -76,13 +70,9 @@ bool libPhantom_TriggerChatHandled(bool checkConds, bool runActions)
 		// Don't ally if invalid color, or color is ourself.
 		if( i != -1 && i != player )
 		{
-			libPhantom_SetVisionMapVisioned(player, i, true);
-			if( libPhantom_HasMapFlag(c_phantomMapFlag_NoSharedVision) ) {
-				libNtve_gf_SetAllianceOneWay(player, i, 0);
-			} else {
-				libNtve_gf_SetAllianceOneWay( player, i, 1 );
+			if( libPhantom_AttemptSetAllianceToPlayer(player, i, true, true) ) {
+				libPhantom_SendInformationMessageToGroupText( PlayerGroupSingle(player), StringToText("You have allied ") + libPhantom_GetColoredPlayerName(i) + StringToText("."));
 			}
-			libPhantom_SendInformationMessageToGroupText( PlayerGroupSingle(player), StringToText("You have allied ") + libPhantom_GetColoredPlayerName(i) + StringToText("."));
 		}
 	} else if( StringSub(message, 1, 13) == "-phantomstats" ) {
 		libPhantom_SendInformationMessageToGroup( PlayerGroupSingle(player), "The " + libPhantom_BuildRoleName(c_phantomRole_Phantom) + "'s current strength is:<n />" + 
@@ -203,18 +193,4 @@ bool libPhantom_TriggerGameVariantResourcesBountifulSelected(bool checkConds, bo
 	return true;
 }
 
-bool libPhantom_TriggerPeriodicPhantomStrengthen(bool checkConds, bool runActions)
-{	
-	// Default: Increase strengthen amount by 5 if strengthen amount is 5.
-	if( libPhantom_Roles[c_phantomRole_Phantom].mineralIncomeStrengthenAmt == 5 )
-	{
-		libPhantom_Roles[c_phantomRole_Phantom].mineralIncomeStrengthenAmt = 10;
-	}
-	
-	if( libPhantom_Roles[c_phantomRole_Phantom].gasIncomeStrengthenAmt == 5 )
-	{
-		libPhantom_Roles[c_phantomRole_Phantom].gasIncomeStrengthenAmt = 10;
-	}
-	return true;
-}
 // Galaxy bug: Must end on newline or errors will be reported on the wrong line

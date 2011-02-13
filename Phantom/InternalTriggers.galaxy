@@ -2,40 +2,17 @@ bool libPhantom_TriggerAllianceSubmitButtonClicked(bool checkConds, bool runActi
 {
 	int player = EventPlayer();
 	int i = 0;
+	
 	while( i < c_phantomMaxPlayers)
 	{
-		if( libPhantom_AllianceCheckbox[player][i] <= 0 )
+		if( libPhantom_AllianceCheckbox[player][i] <= 0 || libPhantom_IsPlayerSlave(i) )
 		{
 			i += 1;
 			continue;
 		}
 		
-		// Are we allied and visioned?
-		if( libNtve_gf_DialogItemIsChecked(libPhantom_AllianceCheckbox[player][i], player) && libNtve_gf_DialogItemIsChecked(libPhantom_VisionCheckbox[player][i], player) )
-		{
-			if( libPhantom_HasMapFlag(c_phantomMapFlag_NoSharedVision) ) {
-				libNtve_gf_SetAllianceOneWay(player, i, 0);
-			} else {
-				libNtve_gf_SetAllianceOneWay(player, i, 1);
-			}
-		} else if( libNtve_gf_DialogItemIsChecked(libPhantom_AllianceCheckbox[player][i], player) && !libNtve_gf_DialogItemIsChecked(libPhantom_VisionCheckbox[player][i], player) )
-		{
-			// Allied but no vision?
-			libNtve_gf_SetAllianceOneWay(player, i, 0);
-		} else if( !libNtve_gf_DialogItemIsChecked(libPhantom_AllianceCheckbox[player][i], player) && !libNtve_gf_DialogItemIsChecked(libPhantom_VisionCheckbox[player][i], player) )
-		{
-			// No alliance, no vision!
-			libNtve_gf_SetAllianceOneWay(player, i, 5);
-		} else if( !libNtve_gf_DialogItemIsChecked(libPhantom_AllianceCheckbox[player][i], player) && libNtve_gf_DialogItemIsChecked(libPhantom_VisionCheckbox[player][i], player) )
-		{
-			// No alliance, but we have vision!
-			if( libPhantom_HasMapFlag(c_phantomMapFlag_NoSharedVision) ) {
-				libNtve_gf_SetAllianceOneWay(player, i, 5);
-			} else {
-				libNtve_gf_SetAllianceOneWay(player, i, 6);
-			}
-		}
-		
+		// Set proper alliances
+		libPhantom_AttemptSetAllianceToPlayer(player, i, libNtve_gf_DialogItemIsChecked(libPhantom_AllianceCheckbox[player][i], player), libNtve_gf_DialogItemIsChecked(libPhantom_VisionCheckbox[player][i], player));
 		i += 1;
 	}
 	
@@ -269,7 +246,7 @@ bool libPhantom_TriggerMapInitialization(bool checkConds, bool runActions)
 	int seconds = 30;
 	
 	libPhantom_LoadBanks();
-	
+	libPhantom_EnsureUniquePlayerColors();
 	FogSetEnabled(false);
 	GameSetSpeedValue(c_gameSpeedFaster);
 	
@@ -280,6 +257,7 @@ bool libPhantom_TriggerMapInitialization(bool checkConds, bool runActions)
 	{
 		MeleeSetOption(i, c_meleeOptionReveal, true);
 		PlayerScoreValueEnableAll(i, false);
+		libPhantom_OriginalColor[i] = PlayerGetColorIndex(i, false);
 		i += 1;
 	}
 	
@@ -422,7 +400,7 @@ bool libPhantom_TriggerUnitDied(bool checkConds, bool runActions)
 	
 	// Is this player now dead as a result of this death?
 	if( libPhantom_IsPlayerReadyToDie(plr) ) {
-		libPhantom_EliminatePlayer(plr);
+		libPhantom_EliminatePlayer(plr, killingPlr);
 	}
 
 	return true;
@@ -431,7 +409,7 @@ bool libPhantom_TriggerUnitDied(bool checkConds, bool runActions)
 bool libPhantom_TriggerPlayerLeft(bool checkConds, bool runActions)
 {
 	if( !libPhantom_IsGameStarted() || !libPhantom_IsGameOver() ) {
-		libPhantom_EliminatePlayer(EventPlayer());
+		libPhantom_EliminatePlayer(EventPlayer(), 0);
 	}
 	
 	// Okay, so, here's the deal: Blizzard decided to be stupid and give us no option to disable resource splitting. So we have to handle that shit.
@@ -468,6 +446,7 @@ bool libPhantom_TriggerPeriodicGameLoop(bool checkConds, bool runActions)
 	playergroup p;
 	text message;
 	text messageSend;
+	bool b;
 	
 	// Do not increment unless game is in progress
 	if( !libPhantom_IsGameStarted() )
@@ -481,72 +460,33 @@ bool libPhantom_TriggerPeriodicGameLoop(bool checkConds, bool runActions)
 	i = 0;
 	while(i < c_phantomRole_MAX )
 	{
+		b = (libPhantom_GameModes[libPhantom_GetCurrentGameMode()].participatingRoles & libPhantom_Roles[i].myMask) != 0;
 		// Is it time to strengthen this role?
-		if( libPhantom_Roles[i].onStrengthen != null && libPhantom_GetGameTime() % libPhantom_Roles[i].periodicStrengthenTimer == 0 ) {
+		if( b && libPhantom_Roles[i].periodicStrengthenTimer > 0 && libPhantom_GetGameTime() % libPhantom_Roles[i].periodicStrengthenTimer == 0 ) {
 			libPhantom_StrengthenRole(i);
-			TriggerExecute( libPhantom_Roles[i].onStrengthen, true, true );
-		}
-		
-		if( libPhantom_GetGameTime() % c_phantomWorkerPingTime == 0 )
-		{
-			x = 0;
-			while(x < c_phantomMaxPlayers)
-			{
-				if( libPhantom_IsPlayerAlive(x) && libPhantom_PlayerHasOnlyWorkers(x) )
-				{
-					libPhantom_PingWorkers(x);
-				}
-				x += 1;
+			if( libPhantom_Roles[i].onStrengthen != null ) {
+				TriggerExecute( libPhantom_Roles[i].onStrengthen, true, true );
 			}
 		}
 		
 		// It is time to reveal.
-		if( libPhantom_Roles[i].revealAlliesAt != -1 && libPhantom_Roles[i].revealAlliesAt == libPhantom_GetGameTime() ) {
-			// Who are in this role?
-			p = libPhantom_GetPlayersInRole(i);
-			if( PlayerGroupCount(p) <= 1 ) {
-				i += 1;
-				continue;
-			}
-			
-			if( PlayerGroupCount(p) == 2 ) {
-				message = StringToText("The other " + libPhantom_BuildRoleName(i) + " is: ");
-				libPhantom_SendInformationMessageToGroupText( PlayerGroupSingle(PlayerGroupPlayer(p, 1)), message + PlayerName(PlayerGroupPlayer(p, 2)));
-				libPhantom_SendInformationMessageToGroupText( PlayerGroupSingle(PlayerGroupPlayer(p, 2)), message + PlayerName(PlayerGroupPlayer(p, 1)));
-			} else {
-				message = StringToText("The other " + libPhantom_BuildPluralRoleName(i) + " are: ");
-				PlayerGroupLoopBegin(p);
-				while( !PlayerGroupLoopDone() )
-				{
-					messageSend = message;
-					x = 1;
-					while(x <= PlayerGroupCount(p))
-					{
-						if( PlayerGroupPlayer(p, x) == PlayerGroupLoopCurrent() ) {
-							x += 1;
-							continue;
-						}
-						
-						message += PlayerName(PlayerGroupPlayer(p, x));
-						if( x != PlayerGroupCount(p) && !((x+1) == PlayerGroupLoopCurrent()) )
-						{
-							message += StringToText(", ");
-						}
-					}
-					message += StringToText(".");
-					
-					libPhantom_SendInformationMessageToGroupText( PlayerGroupSingle(PlayerGroupLoopCurrent()), messageSend );
-					PlayerGroupLoopStep();
-				}
-				PlayerGroupLoopEnd();
-			}
-			
-			if( libPhantom_Roles[i].broadcastReveal ) {
-				libPhantom_SendInformationMessageToGroupText( PlayerGroupActive(), StringToText("The " + libPhantom_BuildPluralRoleName(i) + " have been revealed to each other.") );
-			}
+		if( libPhantom_Roles[i].revealAt != -1 && libPhantom_Roles[i].revealAt == libPhantom_GetGameTime() ) {
+			libPhantom_RevealForRole(i);
 		}
-		
 		i += 1;
+	}
+	
+	if( libPhantom_GetGameTime() % c_phantomWorkerPingTime == 0 )
+	{
+		x = 0;
+		while(x < c_phantomMaxPlayers)
+		{
+			if( libPhantom_IsPlayerAlive(x) && libPhantom_PlayerHasOnlyWorkers(x) )
+			{
+				libPhantom_PingWorkers(x);
+			}
+			x += 1;
+		}
 	}
 	
 	// Game Mode onPeriodic calls
@@ -556,4 +496,29 @@ bool libPhantom_TriggerPeriodicGameLoop(bool checkConds, bool runActions)
 	}
 	return true;
 }
+
+bool libPhantom_TriggerUnitIssuedOrder(bool checkConds, bool runActions)
+{
+	unit u = OrderGetTargetUnit(EventUnitOrder());
+	int player = EventPlayer();
+	int owner;
+	// Are we attacking our master?
+	if( u == null ) {
+		return true;
+	}
+
+	owner = UnitGetOwner(u);
+	// But what if the owner of the unit is a slave, too? We must use the owner of this player if so.
+	if( libPhantom_IsPlayerSlave(owner) ) {
+		owner = libPhantom_GetPlayerSlaveOwner(owner);
+	}
+	
+	if( libPhantom_IsPlayerSlave(player) && libPhantom_GetPlayerSlaveOwner(player) == owner ) {
+		// We're attacking our owner!
+		UnitIssueOrder(EventUnit(), Order(AbilityCommand("stop", 0)), c_orderQueueReplace);
+	}
+	
+	return true;
+}
+
 // Galaxy bug: Must end on newline or errors will be reported on the wrong line
