@@ -1,161 +1,22 @@
+//---------------------------------------------------------------------------------
+// LibPhantom
+// A Galaxy-powered SC2 Phantom Map API
+//---------------------------------------------------------------------------------
+// This code is free to use for your own independent projects provided
+// you give credit to the original author, Motive.
+//
+// Project Page: <https://github.com/Motive/LibPhantom/>
+// For modding support, visit <http://www.sc2mapster.com/>.
+//---------------------------------------------------------------------------------
+
 // Dependencies
 include "TriggerLibs/NativeLib"
 include "TriggerLibs/LibertyLib"
 
-// Max supported players
-const int c_phantomMaxPlayers		= 16;
-
-// Human-readable, these may be changed. 
-// A faction alliance mask is a list of all factions that this player is "aligned" to.
-const int c_phantomAllianceMask_Good 	= (1 << 0);
-const int c_phantomAllianceMask_Evil 	= (1 << 1);
-
+include "Phantom/PhantomConstants"
 include "Phantom/MapConstants"
-
-// A full mask for a signed Galaxy integer.
-// Represents every possible combination of player roles in c_phantomRole<*>
-const int c_phantomRoleMask_All				= 0x7fffffff; // (2^31 max for signed int)
-
-struct PhantomRole
-{
-	string roleName;	// The UI name for this role
-	string pluralRoleName;	// The plural version of the name for this role
-	string colorCode;	// Special color coding for this role, if any
-	string objective;		// Short mission statement
-	string description;		// Long mission statement (used for tips)
-	
-	int allianceMask;	// Mask of this role's allies
-	
-	int minCount;			// Absolute minimum number of this role. Unrelated to game role.
-	int maxCount;			// Absolute maximum number of this role. Unrelated to game role. (0 to ignore)
-	
-	int populationCap;	// Roles current population cap
-	int populationCapDeceptionImpersonate; 	// The role ID that will be used by the Deception tab to mask your population count as. (-1 disables use)
-	
-	fixed killBounty;	// Bounty as a percent of killed unit's cost to give to player. Ex: 0.10 = 10% of killed unit cost
-	
-	int incomeMinerals;	// Minerals received per second
-	int incomeGas;		// Gas received per second
-	
-	trigger onStrengthen;	// This trigger is called when a player strengthens.
-	int periodicStrengthenTimer;	// The timer this role strengthens on
-	int mineralIncomeStrengthenAmt;	// Amounts to strengthen by (income)
-	int gasIncomeStrengthenAmt;		// Amounts to strengthen by (income)
-	int supplyIncreaseAmt;	// Amount to increase supply by when strengthen occurs.
-	
-	trigger onDeath;		// This trigger called when a player of this role dies.
-	
-	int revealAt;		// Seconds in game to reveal roles at. (-1 to ignore option)
-	int revealRoleMask; // The mask of roles to reveal to this person.
-	bool broadcastReveal;	// Whether or not to reveal that this role's allies have been revealed at revealAt above.
-	
-	int resourceDrainRoleMask; // A mask of roles that if a player of this role kills, his resources will be drained completely.
-	
-	int impersonateRole;	// The ID of a role to impersonate. Your true role will only be revealed once you die. (-1 to disable)
-	
-	bool isMeta;	// Is this role a meta role? ie. not actually used.
-	bool isScriptedSelection; // Is this role not available for preferring or picking at the start?
-	
-	// Internal use
-	int myMask;			// Role mask for this role
-	bool blockStrengthen;	// Whether or not this role's strengthen is disabled.
-};
-
-PhantomRole[c_phantomRole_MAX] libPhantom_Roles;
-
-struct PhantomGameMode
-{
-	string modeName;	// The name of this game mode
-	string plainName;	// Undecorated name of this game mode.
-	string shortDescription;	// Very brief description
-	string description; // Long description
-	
-	int participatingRoles;	// A mask of the roles that players can be put into when this mode is selected.
-	
-	trigger onModeSelected;	// Called when this mode is selected.
-	trigger onPeriodic;		// Called every second, or if null, never.
-	trigger onPlayerEnslaved;	// Invoked when someone becomes enslaved. Use libPhantom_GetEnslavedPlayer() and libPhantom_GetEnslavingPlayer() in this trigger.
-	
-	// Internal use
-	int dialogControl;
-	int votes;
-};
-
-PhantomGameMode[c_phantomGameMode_MAX] libPhantom_GameModes;
-
-
-struct PhantomGameVariant
-{
-	string name; // Specific name: Ex "Quick Start"
-	string tooltip;
-	
-	trigger onActivate;
-	
-	// Internal use
-	int dialogControl;
-	int votes;
-};
-
-const int c_phantomMaxVariantsPerGroup = 5;
-struct PhantomGameVariantGroup
-{
-	string name;
-	PhantomGameVariant[c_phantomMaxVariantsPerGroup] variants;
-};
-
-PhantomGameVariant[c_phantomGameVariant_MAX] libPhantom_StandaloneGameVariants;
-PhantomGameVariantGroup[c_phantomGameVariantGroup_MAX] libPhantom_GameVariants;
-
-const int c_phantomWorkerPingTime = 15;
-
-// Map Flags
-const int c_phantomMapFlag_NoSharedVision	= (1 << 0);
-const int c_phantomMapFlag_SlaveStates		= (1 << 1);
-const int c_phantomMapFlag_DoNotRevealSlaveRoles = (1 << 2);
-const int c_phantomMapFlag_LimitSlaveLives = (1 << 3);
-
+include "Phantom/PhantomHeader"
 include "Phantom/MapConfiguration"
-
-
-//--------------------------------
-// GAME RUNTIME DATA
-//--------------------------------
-int libPhantom_MapFlags;
-int libPhantom_GameModeCurrent;
-int[c_phantomMaxPlayers] libPhantom_PlayerRoles;
-bool[c_phantomMaxPlayers] libPhantom_IsAlive;
-int libPhantom_GameTime;
-bool libPhantom_GameStarted;
-bool[c_phantomMaxPlayers] libPhantom_RolePrefferedChosen;
-int[c_phantomMaxPlayers] libPhantom_PreferredRole;
-playergroup[c_phantomRole_MAX] libPhantom_RolePreferredPlayers;
-int[3+c_phantomGameVariantGroup_MAX] libPhantom_VoteDialogs;
-bool[c_phantomMaxPlayers] libPhantom_BPlayerVoted;
-int[c_phantomMaxPlayers] libPhantom_AllianceDialog;
-int[c_phantomMaxPlayers] libPhantom_DeceptionDialog;
-int[c_phantomMaxPlayers][c_phantomMaxPlayers] libPhantom_AllianceCheckbox;
-int[c_phantomMaxPlayers][c_phantomMaxPlayers] libPhantom_VisionCheckbox;
-int[c_phantomMaxPlayers] libPhantom_InitialMinerals;
-int[c_phantomMaxPlayers] libPhantom_InitialGas;
-bool[c_phantomMaxPlayers] libPhantom_HidingSupplyCap;
-int[c_phantomMaxPlayers] libPhantom_DeceptionCheckbox;
-int[c_phantomMaxPlayers] libPhantom_ModeVotedFor;
-int[c_phantomMaxPlayers][c_phantomRole_MAX] libPhantom_RoleVoteButtons;
-int libPhantom_AnnouncementMessageDialog;
-bank[c_phantomMaxPlayers] libPhantom_PlayerBanks;
-int[c_phantomMaxPlayers] libPhantom_SlaveTo;
-int libPhantom_EnslavingPlayer;
-int libPhantom_EnslavedPlayer;
-bool libPhantom_EnslaveResult;
-int[c_phantomMaxPlayers] libPhantom_OriginalColor;
-int[c_phantomMaxPlayers] libPhantom_DeathCount;
-int libPhantom_SlaveLivesAllowed;
-
-bool[c_phantomMaxPlayers][c_phantomMaxPlayers] libPhantom_VisionMap;
-
-// DO NOT USE EXCEPT IN EVENT OF LEAVED PLAYER.
-int[c_phantomMaxPlayers] libPhantom_CurrentMinerals;
-int[c_phantomMaxPlayers] libPhantom_CurrentGas;
 
 // Initializes the Phantom library. Sets up game roles, etc.
 void libPhantom_InitLib()
@@ -260,7 +121,7 @@ bool libPhantom_HasMapFlag(int flag)
 	}
 }
 
-bool libPhantom_HasPlayerVoted(int p)
+bool libPhantom_PlayerHasVoted(int p)
 {
 	return libPhantom_BPlayerVoted[p];
 }
@@ -411,7 +272,7 @@ void libPhantom_EnsureUniquePlayerColors()
 		
 		mask = (1 << PlayerGetColorIndex(i, false));
 		if( usedColors & mask ) {
-			// Error: color already in use by another player! We must find a free color for him and re-assign.
+			// Error: color already in use by another plr! We must find a free color for him and re-assign.
 			PlayerGroupAdd(p, i);
 		} else {
 			usedColors |= mask;
@@ -439,7 +300,7 @@ void libPhantom_EnsureUniquePlayerColors()
 	PlayerGroupLoopEnd();
 }
 
-// Returns the role of a player. If a role can impersonate another role, this role will return the impersonating
+// Returns the role of a plr. If a role can impersonate another role, this role will return the impersonating
 // role if "allowImpersonation" is true.
 int libPhantom_GetPlayerRole(int p, bool allowImpersonation)
 {
@@ -479,7 +340,7 @@ void libPhantom_ForceAllianceChange(int source, int target, bool allied, bool vi
 	}
 }
 
-// Also notifies player of role change
+// Also notifies plr of role change
 void libPhantom_ChangePlayerRole(int p, int r)
 {
 	string message;
@@ -795,8 +656,8 @@ bool libPhantom_IsGameOver()
 	return true;
 }
 
-// Is player ready to have his state set to dead?
-// For this to return true, player must have no structures, or workers
+// Is plr ready to have his state set to dead?
+// For this to return true, plr must have no structures, or workers
 bool libPhantom_IsPlayerReadyToDie(int p)
 {
 	int structures = UnitGroupCount(UnitGroup(null, p, RegionEntireMap(), UnitFilter((1 << c_targetFilterStructure), 0, 0, 0), 0), c_unitCountAlive);
@@ -804,7 +665,7 @@ bool libPhantom_IsPlayerReadyToDie(int p)
 	return (structures == 0 && workers == 0);
 }
 
-// Returns whether a player has no structures, and only worker units left.
+// Returns whether a plr has no structures, and only worker units left.
 bool libPhantom_PlayerHasOnlyWorkers(int p)
 {
 	int structures = UnitGroupCount(UnitGroup(null, p, RegionEntireMap(), UnitFilter((1 << c_targetFilterStructure), 0, 0, 0), 0), c_unitCountAlive);
@@ -824,7 +685,7 @@ void libPhantom_PingWorkers(int p)
 	UnitGroupLoopEnd();
 }
 
-// Kills every unit the player owns.
+// Kills every unit the plr owns.
 static void libPhantom_KillAllPlayerUnits(int p)
 {
 	unitgroup g = UnitGroup(null, p, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0);
@@ -837,7 +698,7 @@ static void libPhantom_KillAllPlayerUnits(int p)
 	UnitGroupLoopEnd();
 }
 
-// Removes every unit the player owns.
+// Removes every unit the plr owns.
 static void libPhantom_RemoveAllPlayerUnits(int p)
 {
 	unitgroup g = UnitGroup(null, p, RegionEntireMap(), UnitFilter(0, 0, 0, 0), 0);
@@ -950,8 +811,8 @@ playergroup libPhantom_GetPlayersInRoles(int mask)
 }
 
 // Kills everything and ensures it's dead
-// Also marks the player internally as defeated.
-// Use this method to eliminate a player from the game.
+// Also marks the plr internally as defeated.
+// Use this method to eliminate a plr from the game.
 void libPhantom_EliminatePlayer(int p, int killer)
 {
 	string message;
@@ -970,7 +831,7 @@ void libPhantom_EliminatePlayer(int p, int killer)
 	
 	MeleeSetOption(p, c_meleeOptionReveal, false);
 	
-	// Kill the player, reveal his/her role now to the world.
+	// Kill the plr, reveal his/her role now to the world.
 	// "A {role} has been eliminated."
 	role = libPhantom_GetPlayerRole(p, false);
 	if( libPhantom_IsPlayerSlave(p) && libPhantom_HasMapFlag(c_phantomMapFlag_DoNotRevealSlaveRoles) ) {
@@ -1102,9 +963,9 @@ void libPhantom_EliminatePlayer(int p, int killer)
 }
 
 // Used to set intended vision status at night.
-void libPhantom_SetVisionMapVisioned(int player, int target, bool visioned)
+void libPhantom_SetVisionMapVisioned(int p, int target, bool visioned)
 {
-	libPhantom_VisionMap[player][target] = visioned;
+	libPhantom_VisionMap[p][target] = visioned;
 }
 
 void libPhantom_SaveVisionStatus()
@@ -1195,29 +1056,27 @@ int libPhantom_GetPlayerCountInRoles(int mask)
 	return PlayerGroupCount(libPhantom_GetPlayersInRoles(mask));
 }
 
-// Predefining for use in this method only.
-void libPhantom_ToggleDeceptionDialog(int player);
-void libPhantom_ToggleAllianceDialog(int player)
+void libPhantom_ToggleAllianceDialog(int plr)
 {
 	int dialog;
 	int i;
 	int CurrentY;
 	string enslaved = "<c val=\"ecd672\">Enslaved</c><n />";
-	if( libPhantom_AllianceDialog[player] )
+	if( libPhantom_AllianceDialog[plr] )
 	{
-		DialogDestroy( libPhantom_AllianceDialog[player] );
-		libPhantom_AllianceDialog[player] = 0;
+		DialogDestroy( libPhantom_AllianceDialog[plr] );
+		libPhantom_AllianceDialog[plr] = 0;
 		return;
 	}
 	
 	// Don't overlap the two dialogs!
-	if( libPhantom_DeceptionDialog[player] )
+	if( libPhantom_DeceptionDialog[plr] )
 	{
-		libPhantom_ToggleDeceptionDialog(player);
+		libPhantom_ToggleDeceptionDialog(plr);
 	}
 	
-	libPhantom_AllianceDialog[player] = DialogCreate(400, 675, c_anchorTopLeft, 225, 50, true);
-	dialog = libPhantom_AllianceDialog[player];
+	libPhantom_AllianceDialog[plr] = DialogCreate(400, 675, c_anchorTopLeft, 225, 50, true);
+	dialog = libPhantom_AllianceDialog[plr];
 	DialogSetTitle(dialog, StringToText("Alliances"));
 	DialogSetTransparency(dialog, 25); // 25% transparent
 	
@@ -1234,30 +1093,30 @@ void libPhantom_ToggleAllianceDialog(int player)
 			// Draw this dude's UI box.
 			libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 50, CurrentY, PlayerName(i), libNtve_gf_ConvertPlayerColorToColor(PlayerGetColorIndex(i, false)), false, 1.0);
 			if( libPhantom_IsPlayerSlave(i) ) {
-				libNtve_gf_SetDialogItemTooltip(DialogControlLastCreated(), StringToText(enslaved + "Wins: " + IntToString(libPhantom_PlayerGetWonGames(i)) + "<n />Losses: " + IntToString(libPhantom_PlayerGetLostGames(i))), PlayerGroupSingle(player));
+				libNtve_gf_SetDialogItemTooltip(DialogControlLastCreated(), StringToText(enslaved + "Wins: " + IntToString(libPhantom_PlayerGetWonGames(i)) + "<n />Losses: " + IntToString(libPhantom_PlayerGetLostGames(i))), PlayerGroupSingle(plr));
 			} else {
-				libNtve_gf_SetDialogItemTooltip(DialogControlLastCreated(), StringToText("Wins: " + IntToString(libPhantom_PlayerGetWonGames(i)) + "<n />Losses: " + IntToString(libPhantom_PlayerGetLostGames(i))), PlayerGroupSingle(player));
+				libNtve_gf_SetDialogItemTooltip(DialogControlLastCreated(), StringToText("Wins: " + IntToString(libPhantom_PlayerGetWonGames(i)) + "<n />Losses: " + IntToString(libPhantom_PlayerGetLostGames(i))), PlayerGroupSingle(plr));
 			}
-			libPhantom_AllianceCheckbox[player][i] = libNtve_gf_CreateDialogItemCheckBox(dialog, 35, 35, c_anchorTopLeft, 200, CurrentY-10, StringToText(""), false);
+			libPhantom_AllianceCheckbox[plr][i] = libNtve_gf_CreateDialogItemCheckBox(dialog, 35, 35, c_anchorTopLeft, 200, CurrentY-10, StringToText(""), false);
 			// Are we allied? If so, check the box!
-			if( PlayerGetAlliance(player, c_allianceIdPassive, i) ) {
-				libNtve_gf_SetDialogItemChecked(DialogControlLastCreated(), true, PlayerGroupSingle(player));
+			if( PlayerGetAlliance(plr, c_allianceIdPassive, i) ) {
+				libNtve_gf_SetDialogItemChecked(DialogControlLastCreated(), true, PlayerGroupSingle(plr));
 			}
-			if( i == player || libPhantom_IsPlayerSlave(i) || libPhantom_IsPlayerSlave(player) ) {
-				DialogControlSetEnabled(DialogControlLastCreated(), PlayerGroupSingle(player), false);
+			if( i == plr || libPhantom_IsPlayerSlave(i) || libPhantom_IsPlayerSlave(plr) ) {
+				DialogControlSetEnabled(DialogControlLastCreated(), PlayerGroupSingle(plr), false);
 			}
-			libPhantom_VisionCheckbox[player][i] = libNtve_gf_CreateDialogItemCheckBox(dialog, 35, 35, c_anchorTopLeft, 300, CurrentY-10, StringToText(""), false);
+			libPhantom_VisionCheckbox[plr][i] = libNtve_gf_CreateDialogItemCheckBox(dialog, 35, 35, c_anchorTopLeft, 300, CurrentY-10, StringToText(""), false);
 			// Are we visioned? If so, check the box!
-			if( PlayerGetAlliance(player, c_allianceIdVision, i) ) {
-				libNtve_gf_SetDialogItemChecked(DialogControlLastCreated(), true, PlayerGroupSingle(player));
+			if( PlayerGetAlliance(plr, c_allianceIdVision, i) ) {
+				libNtve_gf_SetDialogItemChecked(DialogControlLastCreated(), true, PlayerGroupSingle(plr));
 			}
-			if( i == player || libPhantom_IsPlayerSlave(i) || libPhantom_IsPlayerSlave(player)  ) {
-				DialogControlSetEnabled(DialogControlLastCreated(), PlayerGroupSingle(player), false);
+			if( i == plr || libPhantom_IsPlayerSlave(i) || libPhantom_IsPlayerSlave(plr)  ) {
+				DialogControlSetEnabled(DialogControlLastCreated(), PlayerGroupSingle(plr), false);
 			}
 			
 			// c_phantomMapFlag_NoSharedVision in effect? Lock the vision checkbox.
 			if( libPhantom_HasMapFlag(c_phantomMapFlag_NoSharedVision) ) {
-				DialogControlSetEnabled(DialogControlLastCreated(), PlayerGroupSingle(player), false);
+				DialogControlSetEnabled(DialogControlLastCreated(), PlayerGroupSingle(plr), false);
 			}
 			CurrentY += 35;
 		}
@@ -1266,38 +1125,38 @@ void libPhantom_ToggleAllianceDialog(int player)
 	
 	// Now we need our submit buttons
 	libNtve_gf_CreateDialogItemButton( dialog, 150, 50, c_anchorBottom, -75, 30, StringToText(""), StringToText("Submit"), "" );
-	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerAllianceSubmitButtonClicked"), player, DialogControlLastCreated(), c_triggerControlEventTypeClick);
+	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerAllianceSubmitButtonClicked"), plr, DialogControlLastCreated(), c_triggerControlEventTypeClick);
 	libNtve_gf_CreateDialogItemButton( dialog, 150, 50, c_anchorBottom, 75, 30, StringToText(""), StringToText("Cancel"), "" );
-	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerAllianceScreenButtonClicked"), player, DialogControlLastCreated(), c_triggerControlEventTypeClick);
+	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerAllianceScreenButtonClicked"), plr, DialogControlLastCreated(), c_triggerControlEventTypeClick);
 	
 	CurrentY += 50;
 	
 	DialogSetSize(dialog, 400, CurrentY+20);
-	DialogSetVisible(dialog, PlayerGroupSingle(player), true);
+	DialogSetVisible(dialog, PlayerGroupSingle(plr), true);
 }
 
-void libPhantom_ToggleDeceptionDialog(int player)
+void libPhantom_ToggleDeceptionDialog(int plr)
 {
 	int dialog;
 	int[6] items;
 	int i;
 	int cap;
 	
-	if( libPhantom_DeceptionDialog[player] )
+	if( libPhantom_DeceptionDialog[plr] )
 	{
-		DialogDestroy( libPhantom_DeceptionDialog[player] );
-		libPhantom_DeceptionDialog[player] = 0;
+		DialogDestroy( libPhantom_DeceptionDialog[plr] );
+		libPhantom_DeceptionDialog[plr] = 0;
 		return;
 	}
 	
 	// Don't overlap the two dialogs!
-	if( libPhantom_AllianceDialog[player] )
+	if( libPhantom_AllianceDialog[plr] )
 	{
-		libPhantom_ToggleAllianceDialog(player);
+		libPhantom_ToggleAllianceDialog(plr);
 	}
 	
-	libPhantom_DeceptionDialog[player] = DialogCreate(450, 400, c_anchorTopLeft, 225, 50, true);
-	dialog = libPhantom_DeceptionDialog[player];
+	libPhantom_DeceptionDialog[plr] = DialogCreate(450, 400, c_anchorTopLeft, 225, 50, true);
+	dialog = libPhantom_DeceptionDialog[plr];
 	DialogSetTitle(dialog, StringToText("Deception"));
 	DialogSetTransparency(dialog, 25); // 25% transparent
 	
@@ -1313,7 +1172,7 @@ void libPhantom_ToggleDeceptionDialog(int player)
 	// |                                     |
 	// | Cap Supply At 200    [x]            |
 	// +-------------------------------------+
-	// We can use PlayerScoreValueGetAsInt(player, prop) to get these values.
+	// We can use PlayerScoreValueGetAsInt(plr, prop) to get these values.
 	// Valid options: "MineralsCollected", "MineralsCurrent", "MineralsSpent", etc for "Vespene"
 	
 	// Columns
@@ -1324,86 +1183,86 @@ void libPhantom_ToggleDeceptionDialog(int player)
 	
 	// Rows
 	libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 50, 140, StringToText("Mined"), Color(100,100,100), false, 1.0);
-	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercCategory", PlayerGroupSingle(player));
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercCategory", PlayerGroupSingle(plr));
 	libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 50, 180, StringToText("Spent"), Color(100,100,100), false, 1.0);
-	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercCategory", PlayerGroupSingle(player));
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercCategory", PlayerGroupSingle(plr));
 	libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 50, 220, StringToText("Remaining"), Color(100,100,100), false, 1.0);
-	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercCategory", PlayerGroupSingle(player));
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercCategory", PlayerGroupSingle(plr));
 	
 	// And now our actual data!
 	// Minerals Mined
 	items[0] = libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 200, 140, StringToText(""), Color(100,100,100), false, 1.0);
-	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(plr));
 	// Vespene Mined
 	items[1] = libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 300, 140, StringToText(""), Color(100,100,100), false, 1.0);
-	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(plr));
 	
 	// Minerals Spent
 	items[2] = libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 200, 180, StringToText(""), Color(100,100,100), false, 1.0);
-	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(plr));
 	// Vespene Spent
 	items[3] = libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 300, 180, StringToText(""), Color(100,100,100), false, 1.0);
-	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(plr));
 	
 	// Minerals Remaining
 	items[4] = libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 200, 220, StringToText(""), Color(100,100,100), false, 1.0);
-	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(plr));
 	// Vespene Remaining
 	items[5] = libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 300, 220, StringToText(""), Color(100,100,100), false, 1.0);
-	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(plr));
 	
-	cap = libPhantom_GetPlayerDeceptionSupplyCapValue(player);
+	cap = libPhantom_GetPlayerDeceptionSupplyCapValue(plr);
 	if( cap == -1 ) {
 		libNtve_gf_CreateDialogItemLabel(dialog, 300, 35, c_anchorTopLeft, 50, 280, StringToText("Cap Population at 200"), Color(100,100,100), false, 1.0);
 	} else {
 		libNtve_gf_CreateDialogItemLabel(dialog, 300, 35, c_anchorTopLeft, 50, 280, StringToText("Cap Population at " + IntToString(cap)), Color(100,100,100), false, 1.0);
 	}
-	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
-	libPhantom_DeceptionCheckbox[player] = libNtve_gf_CreateDialogItemCheckBox(dialog, 35, 35, c_anchorTopLeft, 300, 270, StringToText(""), libPhantom_IsPlayerHidingSupplyCap(player));
-	if( !libPhantom_CanPlayerHideSupplyCap(player) ) {
-		DialogControlSetEnabled( DialogControlLastCreated(), PlayerGroupSingle(player), false );
+	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(plr));
+	libPhantom_DeceptionCheckbox[plr] = libNtve_gf_CreateDialogItemCheckBox(dialog, 35, 35, c_anchorTopLeft, 300, 270, StringToText(""), libPhantom_IsPlayerHidingSupplyCap(plr));
+	if( !libPhantom_CanPlayerHideSupplyCap(plr) ) {
+		DialogControlSetEnabled( DialogControlLastCreated(), PlayerGroupSingle(plr), false );
 	}
 	
 	libNtve_gf_CreateDialogItemButton(dialog, 150, 50, c_anchorBottom, -75, 30, StringToText(""), StringToText("Submit"), "");
-	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerDeceptionDialogSubmitClicked"), player, DialogControlLastCreated(), c_triggerControlEventTypeClick);
+	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerDeceptionDialogSubmitClicked"), plr, DialogControlLastCreated(), c_triggerControlEventTypeClick);
 	libNtve_gf_CreateDialogItemButton(dialog, 150, 50, c_anchorBottom, 75, 30, StringToText(""), StringToText("Cancel"), "");
-	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerDeceptionScreenButtonClicked"), player, DialogControlLastCreated(), c_triggerControlEventTypeClick);
+	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerDeceptionScreenButtonClicked"), plr, DialogControlLastCreated(), c_triggerControlEventTypeClick);
 	
-	DialogSetVisible(dialog, PlayerGroupSingle(player), true);
+	DialogSetVisible(dialog, PlayerGroupSingle(plr), true);
 	
-	while( libPhantom_DeceptionDialog[player] != 0 && dialog == libPhantom_DeceptionDialog[player] )
+	while( libPhantom_DeceptionDialog[plr] != 0 && dialog == libPhantom_DeceptionDialog[plr] )
 	{
 		i = 0;
 		while(i < 6)
 		{
 			// Minerals Mined
 			if( i == 0 ) {
-				libNtve_gf_SetDialogItemText(items[i], IntToText(libPhantom_InitialMinerals[player] + PlayerScoreValueGetAsInt(player, "MineralsCollected")), PlayerGroupSingle(player));
+				libNtve_gf_SetDialogItemText(items[i], IntToText(libPhantom_InitialMinerals[plr] + PlayerScoreValueGetAsInt(plr, "MineralsCollected")), PlayerGroupSingle(plr));
 			}
 			
 			// Minerals Spent
 			if( i == 2 ) {
-				libNtve_gf_SetDialogItemText(items[i], IntToText(PlayerScoreValueGetAsInt(player, "MineralsSpent")), PlayerGroupSingle(player));
+				libNtve_gf_SetDialogItemText(items[i], IntToText(PlayerScoreValueGetAsInt(plr, "MineralsSpent")), PlayerGroupSingle(plr));
 			}
 			
 			// Minerals Remaining
 			if( i == 4 ) {
-				libNtve_gf_SetDialogItemText(items[i], IntToText(libPhantom_InitialMinerals[player] + PlayerScoreValueGetAsInt(player, "MineralsCollected") - PlayerScoreValueGetAsInt(player, "MineralsSpent")), PlayerGroupSingle(player));
+				libNtve_gf_SetDialogItemText(items[i], IntToText(libPhantom_InitialMinerals[plr] + PlayerScoreValueGetAsInt(plr, "MineralsCollected") - PlayerScoreValueGetAsInt(plr, "MineralsSpent")), PlayerGroupSingle(plr));
 			}
 			
 			// Gas Mined
 			if( i == 1 ) {
-				libNtve_gf_SetDialogItemText(items[i], IntToText(libPhantom_InitialGas[player] + PlayerScoreValueGetAsInt(player, "VespeneCollected")), PlayerGroupSingle(player));
+				libNtve_gf_SetDialogItemText(items[i], IntToText(libPhantom_InitialGas[plr] + PlayerScoreValueGetAsInt(plr, "VespeneCollected")), PlayerGroupSingle(plr));
 			}
 			
 			// Gas Spent
 			if( i == 3 ) {
-				libNtve_gf_SetDialogItemText(items[i], IntToText(PlayerScoreValueGetAsInt(player, "VespeneSpent")), PlayerGroupSingle(player));
+				libNtve_gf_SetDialogItemText(items[i], IntToText(PlayerScoreValueGetAsInt(plr, "VespeneSpent")), PlayerGroupSingle(plr));
 			}
 			
 			// Gas Remaining
 			if( i == 5 ) {
-				libNtve_gf_SetDialogItemText(items[i], IntToText(libPhantom_InitialGas[player] + PlayerScoreValueGetAsInt(player, "VespeneCollected") - PlayerScoreValueGetAsInt(player, "VespeneSpent")), PlayerGroupSingle(player));
+				libNtve_gf_SetDialogItemText(items[i], IntToText(libPhantom_InitialGas[plr] + PlayerScoreValueGetAsInt(plr, "VespeneCollected") - PlayerScoreValueGetAsInt(plr, "VespeneSpent")), PlayerGroupSingle(plr));
 			}
 			
 			i += 1;
@@ -1563,14 +1422,14 @@ void libPhantom_ShowVotingDialog()
 	DialogSetVisible(dialog, PlayerGroupActive(), true);
 }
 
-void libPhantom_ResetGameModeVotes(int player, int ignore)
+void libPhantom_ResetGameModeVotes(int plr, int ignore)
 {
 	int i = 0;
 	while(i < c_phantomGameMode_MAX)
 	{
 		if( libPhantom_GameModes[i].dialogControl != ignore )
 		{
-			libNtve_gf_SetDialogItemChecked( libPhantom_GameModes[i].dialogControl, false, PlayerGroupSingle(player) );
+			libNtve_gf_SetDialogItemChecked( libPhantom_GameModes[i].dialogControl, false, PlayerGroupSingle(plr) );
 		}
 		i += 1;
 	}
@@ -1629,7 +1488,7 @@ void libPhantom_TallyVotes()
 	mostVotesAmt = -1;
 	while(i < c_phantomGameMode_MAX)
 	{
-		if( libPhantom_GameModes[i].votes > mostVotesAmt || (libPhantom_GameVariants[i].variants[o].votes == mostVotesAmt && OneIn(2)) )
+		if( libPhantom_GameModes[i].votes > mostVotesAmt || (libPhantom_GameModes[i].votes == mostVotesAmt && OneIn(2)) )
 		{
 			mostVotes = i;
 			mostVotesAmt = libPhantom_GameModes[i].votes;
@@ -1641,14 +1500,14 @@ void libPhantom_TallyVotes()
 	libPhantom_SetCurrentGameMode( mostVotes );
 }
 
-void libPhantom_ResetGameVariantGroup(int player, int group, int ignore)
+void libPhantom_ResetGameVariantGroup(int plr, int group, int ignore)
 {
 	int i = 0;
 	while( i < c_phantomMaxVariantsPerGroup )
 	{
 		if( libPhantom_GameVariants[group].variants[i].dialogControl != ignore )
 		{
-			libNtve_gf_SetDialogItemChecked( libPhantom_GameVariants[group].variants[i].dialogControl, false, PlayerGroupSingle(player) );
+			libNtve_gf_SetDialogItemChecked( libPhantom_GameVariants[group].variants[i].dialogControl, false, PlayerGroupSingle(plr) );
 		}
 		i += 1;
 	}
@@ -1659,7 +1518,7 @@ bool libPhantom_VotingInProgress()
 	PlayerGroupLoopBegin(PlayerGroupActive());
 	while( !PlayerGroupLoopDone() )
 	{
-		if( !libPhantom_HasPlayerVoted(PlayerGroupLoopCurrent()) )
+		if( !libPhantom_PlayerHasVoted(PlayerGroupLoopCurrent()) )
 		{
 			PlayerGroupLoopEnd();
 			return true;
@@ -1671,8 +1530,8 @@ bool libPhantom_VotingInProgress()
 	return false;
 }
 
-// Takes a color ie. "red" and turns to int representing player.
-// Returns -1 if no such player found.
+// Takes a color ie. "red" and turns to int representing plr.
+// Returns -1 if no such plr found.
 int libPhantom_ConvertColorToPlayer(string c)
 {
 	int i;
@@ -1703,8 +1562,8 @@ void libPhantom_AssignPlayersToRoles()
 	playergroup g = PlayerGroupCopy(PlayerGroupActive());
 	remainingPlayers = PlayerGroupCount(g);
 	// So, here's the basic process:
-	// we'll iterate over all of the participating roles and for each player in minCount, we'll 
-	// assign a player to that role. This ensures we have the correct minimums for everything.
+	// we'll iterate over all of the participating roles and for each plr in minCount, we'll 
+	// assign a plr to that role. This ensures we have the correct minimums for everything.
 	i = 0;
 	while(i < c_phantomRole_MAX)
 	{
@@ -1716,24 +1575,24 @@ void libPhantom_AssignPlayersToRoles()
 			{
 				if( PlayerGroupCount(libPhantom_RolePreferredPlayers[i]) > 0 )
 				{
-					// Pick a player from the preferred group
+					// Pick a plr from the preferred group
 					p = PlayerGroupPlayer(libPhantom_RolePreferredPlayers[i], RandomInt(1, PlayerGroupCount(libPhantom_RolePreferredPlayers[i])));
-					// Remove player from group
+					// Remove plr from group
 					PlayerGroupRemove(libPhantom_RolePreferredPlayers[i], p);
 					// Remove from main group as well.
 					PlayerGroupRemove(g, p);
 				}
 				else
 				{
-					// Pick a random active player.
+					// Pick a random active plr.
 					p = PlayerGroupPlayer(g, RandomInt(1, PlayerGroupCount(g)));
-					// Remove player from group, we can't pick him again for another role.
+					// Remove plr from group, we can't pick him again for another role.
 					PlayerGroupRemove(g, p); 
 					// Remove from the preferred group as well.
 					PlayerGroupRemove(libPhantom_RolePreferredPlayers[libPhantom_PreferredRole[p]], p);
 				}
 				
-				// Set this player to alive and all that jazz.
+				// Set this plr to alive and all that jazz.
 				libPhantom_SetPlayerAliveOrDead(p, true);
 				// And now set his role to this.
 				libPhantom_SetPlayerRole(p, i);
@@ -1782,19 +1641,19 @@ void libPhantom_AssignPlayersToRoles()
 		{
 			if( PlayerGroupCount(libPhantom_RolePreferredPlayers[i]) > 0 )
 			{
-				// Pick a player from the preferred group
+				// Pick a plr from the preferred group
 				p = PlayerGroupPlayer(libPhantom_RolePreferredPlayers[i], RandomInt(1, PlayerGroupCount(libPhantom_RolePreferredPlayers[i])));
-				// Remove player from group
+				// Remove plr from group
 				PlayerGroupRemove(libPhantom_RolePreferredPlayers[i], p);
 				// Remove from main group as well.
 				PlayerGroupRemove(g, p);
 			}
 			else
 			{
-				// Add a player into this role.
-				// Pick a random player
+				// Add a plr into this role.
+				// Pick a random plr
 				p = PlayerGroupPlayer(g, RandomInt(1, PlayerGroupCount(g)));
-				// Remove player from group, we can't pick him again.
+				// Remove plr from group, we can't pick him again.
 				PlayerGroupRemove(g, p);
 				// Remove from the preferred group as well.
 				PlayerGroupRemove(libPhantom_RolePreferredPlayers[libPhantom_PreferredRole[p]], p);
@@ -1860,7 +1719,7 @@ void libPhantom_StrengthenRole(int r)
 	}
 }
 
-// Builds a dialog with the roles of the game mode the player voted for, asking him for his preference
+// Builds a dialog with the roles of the game mode the plr voted for, asking him for his preference
 void libPhantom_BuildPreferredRoleDialog(int p)
 {
 	int mode = libPhantom_ModeVotedFor[p]; // the mode we voted for

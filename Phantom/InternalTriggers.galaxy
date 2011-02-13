@@ -1,18 +1,29 @@
+//---------------------------------------------------------------------------------
+// LibPhantom
+// A Galaxy-powered SC2 Phantom Map API
+//---------------------------------------------------------------------------------
+// This code is free to use for your own independent projects provided
+// you give credit to the original author, Motive.
+//
+// Project Page: <https://github.com/Motive/LibPhantom/>
+// For modding support, visit <http://www.sc2mapster.com/>.
+//---------------------------------------------------------------------------------
+
 bool libPhantom_TriggerAllianceSubmitButtonClicked(bool checkConds, bool runActions)
 {
-	int player = EventPlayer();
+	int plr = EventPlayer();
 	int i = 0;
 	
 	while( i < c_phantomMaxPlayers)
 	{
-		if( libPhantom_AllianceCheckbox[player][i] <= 0 || libPhantom_IsPlayerSlave(i) )
+		if( libPhantom_AllianceCheckbox[plr][i] <= 0 || libPhantom_IsPlayerSlave(i) )
 		{
 			i += 1;
 			continue;
 		}
 		
 		// Set proper alliances
-		libPhantom_AttemptSetAllianceToPlayer(player, i, libNtve_gf_DialogItemIsChecked(libPhantom_AllianceCheckbox[player][i], player), libNtve_gf_DialogItemIsChecked(libPhantom_VisionCheckbox[player][i], player));
+		libPhantom_AttemptSetAllianceToPlayer(plr, i, libNtve_gf_DialogItemIsChecked(libPhantom_AllianceCheckbox[plr][i], plr), libNtve_gf_DialogItemIsChecked(libPhantom_VisionCheckbox[plr][i], plr));
 		i += 1;
 	}
 	
@@ -24,25 +35,25 @@ bool libPhantom_TriggerAllianceSubmitButtonClicked(bool checkConds, bool runActi
 
 bool libPhantom_TriggerClickVoteButton(bool checkConds, bool runActions)
 {
-	int player = EventPlayer();
+	int plr = EventPlayer();
 	int i;
 	int o;
-	if( libPhantom_HasPlayerVoted(player) )
+	if( libPhantom_PlayerHasVoted(plr) )
 	{
 		return true;
 	}
 	
-	libPhantom_PlayerVoted(player);
+	libPhantom_PlayerVoted(plr);
 	
 	// Vote for Game Mode!
 	i = 0;
 	while(i < c_phantomGameMode_MAX)
 	{
-		if( libNtve_gf_DialogItemIsChecked(libPhantom_GameModes[i].dialogControl, player) )
+		if( libNtve_gf_DialogItemIsChecked(libPhantom_GameModes[i].dialogControl, plr) )
 		{
 			// We voted for this
 			libPhantom_GameModes[i].votes += 1;
-			libPhantom_ModeVotedFor[player] = i;
+			libPhantom_ModeVotedFor[plr] = i;
 			break;
 		}
 		i += 1;
@@ -56,7 +67,7 @@ bool libPhantom_TriggerClickVoteButton(bool checkConds, bool runActions)
 		o = 0;
 		while(o < c_phantomMaxVariantsPerGroup)
 		{
-			if( libPhantom_GameVariants[i].variants[o].name != "" && libNtve_gf_DialogItemIsChecked(libPhantom_GameVariants[i].variants[o].dialogControl, player) )
+			if( libPhantom_GameVariants[i].variants[o].name != "" && libNtve_gf_DialogItemIsChecked(libPhantom_GameVariants[i].variants[o].dialogControl, plr) )
 			{
 				// We voted for this.
 				libPhantom_GameVariants[i].variants[o].votes += 1;
@@ -71,7 +82,7 @@ bool libPhantom_TriggerClickVoteButton(bool checkConds, bool runActions)
 	i = 0;
 	while(i < c_phantomGameVariant_MAX)
 	{
-		if( libNtve_gf_DialogItemIsChecked(libPhantom_StandaloneGameVariants[i].dialogControl, player) )
+		if( libNtve_gf_DialogItemIsChecked(libPhantom_StandaloneGameVariants[i].dialogControl, plr) )
 		{
 			libPhantom_StandaloneGameVariants[i].votes += 1;
 		}
@@ -138,26 +149,26 @@ bool libPhantom_TriggerClickSkipButton(bool checkConds, bool runActions)
 
 bool libPhantom_TriggerGameModeDialogCheckboxClicked(bool checkConds, bool runActions)
 {
-	int player = EventPlayer();
+	int plr = EventPlayer();
 	int dialogControl = EventDialogControl();
 	
-	if( !libNtve_gf_DialogItemIsChecked(dialogControl, player) ) 
+	if( !libNtve_gf_DialogItemIsChecked(dialogControl, plr) ) 
 	{
 		return true;
 	}
 	
-	libPhantom_ResetGameModeVotes(player, dialogControl);
+	libPhantom_ResetGameModeVotes(plr, dialogControl);
 	return true;
 }
 
 // Keeps stuff in "groups" from being checked together, only.
 bool libPhantom_TriggerDialogCheckboxClicked(bool checkConds, bool runActions)
 {
-	int player = EventPlayer();
+	int plr = EventPlayer();
 	int dialogControl = EventDialogControl();
 	int i = 0;
 	int o = 0;
-	if( !libNtve_gf_DialogItemIsChecked(dialogControl, player) ) 
+	if( !libNtve_gf_DialogItemIsChecked(dialogControl, plr) ) 
 	{
 		return true;
 	}
@@ -173,7 +184,7 @@ bool libPhantom_TriggerDialogCheckboxClicked(bool checkConds, bool runActions)
 			{
 				// We have a match!
 				// Reset all of this guy's group.
-				libPhantom_ResetGameVariantGroup(player, i, dialogControl);
+				libPhantom_ResetGameVariantGroup(plr, i, dialogControl);
 				return true;
 			}
 
@@ -249,7 +260,7 @@ bool libPhantom_TriggerMapInitialization(bool checkConds, bool runActions)
 	libPhantom_EnsureUniquePlayerColors();
 	FogSetEnabled(false);
 	GameSetSpeedValue(c_gameSpeedFaster);
-	
+
 	MeleeInitUnits();
 	MeleeInitResources();
 	i = 0;
@@ -260,7 +271,6 @@ bool libPhantom_TriggerMapInitialization(bool checkConds, bool runActions)
 		libPhantom_OriginalColor[i] = PlayerGetColorIndex(i, false);
 		i += 1;
 	}
-	
 	// Disable trading/alliance menu
 	UISetFrameVisible(PlayerGroupActive(), c_syncFrameTypeTeamResourceButton, false);
 	UISetFrameVisible(PlayerGroupActive(), c_syncFrameTypeAllianceButton, false);
@@ -274,7 +284,7 @@ bool libPhantom_TriggerMapInitialization(bool checkConds, bool runActions)
 	
 	libNtve_gf_HideGameUI(false, PlayerGroupActive());
 	CinematicFade( false, 0.0, c_fadeStyleNormal, Color(0, 0, 0), 0, false);
-	
+
 	libPhantom_ShowVotingDialog();
 	// Countdown, anyone?
 	while( libPhantom_VotingInProgress() && seconds > 0)
@@ -305,10 +315,10 @@ bool libPhantom_TriggerMapInitialization(bool checkConds, bool runActions)
 	UISetCommandAllowed(PlayerGroupActive(), c_uiCommandAllowButtons, true);
 	UISetCommandAllowed(PlayerGroupActive(), c_uiCommandAllowHotkeys, true);
 	UISetCommandAllowed(PlayerGroupActive(), c_uiCommandAllowSmartClick, true);
-	
+
 	// Activate the game modes based on everyone's votes.
 	libPhantom_TallyVotes();
-	
+
 	i = 0;
 	while(i < c_phantomMaxPlayers)
 	{
@@ -325,9 +335,9 @@ bool libPhantom_TriggerMapInitialization(bool checkConds, bool runActions)
 		libPhantom_PlayerIncreasePlayedGamesScore(i);
 		i += 1;
 	}
-	
+
 	libPhantom_BuildHelpMenuTips();
-	
+
 	// Draw Screen Buttons for Alliance/Deception
 	libNtve_gf_DisplayScreenButton(1, StringToText("<s val=\"MercCategory\">Alliances</s>"), 200, 80, c_anchorTopLeft, 30, 50, TriggerCreate("libPhantom_TriggerAllianceScreenButtonClicked") );
 	libNtve_gf_SetScreenButtonBorderImage(1, "Assets\\Textures\\ui_mission_hackingbutton_normalpressed.dds", "Assets\\Textures\\ui_mission_hackingbutton_normaloverpressedover.dds", c_triggerImageTypeBorder);
@@ -500,7 +510,7 @@ bool libPhantom_TriggerPeriodicGameLoop(bool checkConds, bool runActions)
 bool libPhantom_TriggerUnitIssuedOrder(bool checkConds, bool runActions)
 {
 	unit u = OrderGetTargetUnit(EventUnitOrder());
-	int player = EventPlayer();
+	int plr = EventPlayer();
 	int owner;
 	// Are we attacking our master?
 	if( u == null ) {
@@ -513,7 +523,7 @@ bool libPhantom_TriggerUnitIssuedOrder(bool checkConds, bool runActions)
 		owner = libPhantom_GetPlayerSlaveOwner(owner);
 	}
 	
-	if( libPhantom_IsPlayerSlave(player) && libPhantom_GetPlayerSlaveOwner(player) == owner ) {
+	if( libPhantom_IsPlayerSlave(plr) && libPhantom_GetPlayerSlaveOwner(plr) == owner ) {
 		// We're attacking our owner!
 		UnitIssueOrder(EventUnit(), Order(AbilityCommand("stop", 0)), c_orderQueueReplace);
 	}

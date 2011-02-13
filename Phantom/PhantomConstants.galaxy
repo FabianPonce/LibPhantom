@@ -1,0 +1,121 @@
+//---------------------------------------------------------------------------------
+// LibPhantom
+// A Galaxy-powered SC2 Phantom Map API
+//---------------------------------------------------------------------------------
+// This code is free to use for your own independent projects provided
+// you give credit to the original author, Motive.
+//
+// Project Page: <https://github.com/Motive/LibPhantom/>
+// For modding support, visit <http://www.sc2mapster.com/>.
+//---------------------------------------------------------------------------------
+
+// Maximum number of supported players by the API
+const int c_phantomMaxPlayers		= 16;
+
+// Bitmasks of commonly used alliances by roles
+const int c_phantomAllianceMask_Good 	= (1 << 0);
+const int c_phantomAllianceMask_Evil 	= (1 << 1);
+
+// A full mask for a signed Galaxy integer.
+// Represents every possible combination of plr roles in c_phantomRole<*>
+const int c_phantomRoleMask_All				= 0x7fffffff; // (2^31 max for signed int)
+
+// Time in seconds between the pings when a player has only workers left.
+const int c_phantomWorkerPingTime = 15;
+
+// Map Flags
+const int c_phantomMapFlag_NoSharedVision			= (1 << 0);
+const int c_phantomMapFlag_SlaveStates				= (1 << 1);
+const int c_phantomMapFlag_DoNotRevealSlaveRoles	= (1 << 2);
+const int c_phantomMapFlag_LimitSlaveLives			= (1 << 3);
+
+struct PhantomRole
+{
+	string roleName;	// The UI name for this role
+	string pluralRoleName;	// The plural version of the name for this role
+	string colorCode;	// Special color coding for this role, if any
+	string objective;		// Short mission statement
+	string description;		// Long mission statement (used for tips)
+	
+	int allianceMask;	// Mask of this role's allies
+	
+	int minCount;			// Absolute minimum number of this role. Unrelated to game role.
+	int maxCount;			// Absolute maximum number of this role. Unrelated to game role. (0 to ignore)
+	
+	int populationCap;	// Roles current population cap
+	int populationCapDeceptionImpersonate; 	// The role ID that will be used by the Deception tab to mask your population count as. (-1 disables use)
+	
+	fixed killBounty;	// Bounty as a percent of killed unit's cost to give to plr. Ex: 0.10 = 10% of killed unit cost
+	
+	int incomeMinerals;	// Minerals received per second
+	int incomeGas;		// Gas received per second
+	
+	trigger onStrengthen;	// This trigger is called when a plr strengthens.
+	int periodicStrengthenTimer;	// The timer this role strengthens on
+	int mineralIncomeStrengthenAmt;	// Amounts to strengthen by (income)
+	int gasIncomeStrengthenAmt;		// Amounts to strengthen by (income)
+	int supplyIncreaseAmt;	// Amount to increase supply by when strengthen occurs.
+	
+	trigger onDeath;		// This trigger called when a plr of this role dies.
+	
+	int revealAt;		// Seconds in game to reveal roles at. (-1 to ignore option)
+	int revealRoleMask; // The mask of roles to reveal to this person.
+	bool broadcastReveal;	// Whether or not to reveal that this role's allies have been revealed at revealAt above.
+	
+	int resourceDrainRoleMask; // A mask of roles that if a plr of this role kills, his resources will be drained completely.
+	
+	int impersonateRole;	// The ID of a role to impersonate. Your true role will only be revealed once you die. (-1 to disable)
+	
+	bool isMeta;	// Is this role a meta role? ie. not actually used.
+	bool isScriptedSelection; // Is this role not available for preferring or picking at the start?
+	
+	// Internal use
+	int myMask;			// Role mask for this role
+	bool blockStrengthen;	// Whether or not this role's strengthen is disabled.
+};
+
+struct PhantomGameMode
+{
+	string modeName;	// The name of this game mode
+	string plainName;	// Undecorated name of this game mode.
+	string shortDescription;	// Very brief description
+	string description; // Long description
+	
+	int participatingRoles;	// A mask of the roles that players can be put into when this mode is selected.
+	
+	// Called when this mode is selected but right before it is initialized.
+	trigger onModeSelected;
+	
+	// Called every second, or if null, never.
+	trigger onPeriodic;
+	
+	// Invoked when someone becomes enslaved. Use libPhantom_GetEnslavedPlayer() and libPhantom_GetEnslavingPlayer() in this trigger. 
+	// Also libPhantom_SetEnslaveResult(true) to make the enslave work
+	trigger onPlayerEnslaved;
+	
+	// Internal use
+	int dialogControl;
+	int votes;
+};
+
+struct PhantomGameVariant
+{
+	string name; // Specific name: Ex "Quick Start"
+	string tooltip;
+	
+	trigger onActivate;
+	
+	// Internal use
+	int dialogControl;
+	int votes;
+};
+
+const int c_phantomMaxVariantsPerGroup = 5;
+struct PhantomGameVariantGroup
+{
+	string name;
+	PhantomGameVariant[c_phantomMaxVariantsPerGroup] variants;
+};
+
+
+// Galaxy Editor bug: Must end on newline or errors will be reported on the wrong line

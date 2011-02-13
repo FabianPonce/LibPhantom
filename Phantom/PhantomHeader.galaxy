@@ -1,0 +1,220 @@
+//---------------------------------------------------------------------------------
+// LibPhantom
+// A Galaxy-powered SC2 Phantom Map API
+//---------------------------------------------------------------------------------
+// This code is free to use for your own independent projects provided
+// you give credit to the original author, Motive.
+//
+// Project Page: <https://github.com/Motive/LibPhantom/>
+// For modding support, visit <http://www.sc2mapster.com/>.
+//---------------------------------------------------------------------------------
+
+//---------------------------------
+// MAIN LIBRARY FUNCTIONS
+//---------------------------------
+void libPhantom_InitLib();
+void libPhantom_LoadBanks();
+void libPhantom_BuildHelpMenuTips();
+
+// Can be run to reset everyone's color to a unique and unshared color.
+// Counteracts a Blizzard bug where the in-game lobby shows non-existant colors.
+void libPhantom_EnsureUniquePlayerColors();
+
+//---------------------------------
+// OUTPUT FUNCTIONS
+//---------------------------------
+void libPhantom_SendInformationMessageToGroupText(playergroup g, text message);
+void libPhantom_SendInformationMessageToAll(string message);
+void libPhantom_SendInformationMessageToAllText(text message);
+void libPhantom_SendInformationMessageToGroup(playergroup g, string message);
+
+void libPhantom_SendAnnouncementMessageToAll(string message, int duration);
+
+string libPhantom_BuildPlainRoleName(int r);
+string libPhantom_BuildRoleName(int r);
+string libPhantom_BuildPluralRoleName(int r);
+
+int libPhantom_ConvertColorToPlayer(string c); // -1 if not found
+text libPhantom_GetColoredPlayerName(int p);
+
+//---------------------------------
+// MAP FUNCTIONS
+//---------------------------------
+void libPhantom_SetMapFlag(int flag);
+void libPhantom_UnsetMapFlag(int flag);
+bool libPhantom_HasMapFlag(int flag);
+
+bool libPhantom_IsGameStarted();
+void libPhantom_SetGameStarted(bool s);
+int libPhantom_GetGameTime();
+
+// Returns the current selected game mode.
+int libPhantom_GetCurrentGameMode();
+
+// Returns the name of the current game mode.
+string libPhantom_GetCurrentGameModeName();
+
+// Sets the current gamemode. This method also invokes the game mode's onModeSelected handler.
+void libPhantom_SetCurrentGameMode(int mode);
+
+// Returns true/false depending on whether there are sufficient players
+// Must be called after game mode has been chosen.
+bool libPhantom_HasSufficientPlayers();
+
+// Determines whether any side has won the game.
+// The logic for this method is simple, for the game to be over, all alive players must
+// have an alliancemask that includes all other roles masks in the game.
+bool libPhantom_IsGameOver();
+
+//---------------------------------
+// PLAYER MGMT
+//---------------------------------
+playergroup libPhantom_GetPlayersInRole(int r);
+int libPhantom_PlayerCountInRole(int r);
+playergroup libPhantom_GetPlayersInRoles(int mask);
+void libPhantom_EliminatePlayer(int p, int killer);
+int libPhantom_GetPlayerCountInRoles(int mask);
+
+// Strengthens a role based on it's strengthen information
+void libPhantom_StrengthenRole(int r);
+
+// Triggers a role's revealAt data.
+void libPhantom_RevealForRole(int r);
+
+//---------------------------------
+// PLAYER FUNCTIONS
+//---------------------------------
+
+// Score
+void libPhantom_PlayerIncreasePlayedGamesScore(int p);
+void libPhantom_PlayerIncreaseWonGamesScore(int p);
+int libPhantom_PlayerGetPlayedGames(int p);
+int libPhantom_PlayerGetWonGames(int p);
+int libPhantom_PlayerGetLostGames(int p);
+
+// Voting
+bool libPhantom_PlayerHasVoted(int p);
+void libPhantom_PlayerVoted(int p);
+
+// Alive
+void libPhantom_SetPlayerAliveOrDead(int p, bool alive);
+bool libPhantom_IsPlayerAlive(int i);
+void libPhantom_RevivePlayer(int p);
+bool libPhantom_IsPlayerReadyToDie(int p); // checks if player has no workers, no structures
+bool libPhantom_PlayerHasOnlyWorkers(int p);
+
+// Role Management
+int libPhantom_GetPlayerRole(int p, bool allowImpersonation);
+void libPhantom_SetPlayerRole(int p, int r);
+void libPhantom_ChangePlayerRole(int p, int r); // also notifies player of change
+
+// Alliances
+void libPhantom_ForceAllianceChange(int source, int target, bool allied, bool vision);
+bool libPhantom_AttemptSetAllianceToPlayer(int source, int target, bool allied, bool vision);
+bool libPhantom_PlayersAreAllied(int a, int b); // Does not check actual alliances, but intended alliances
+
+// Slave Management
+void libPhantom_SetSlaveLivesAllowed(int lives);
+int libPhantom_GetSlaveDeathCount(int p);
+void libPhantom_SlaveDied(int p);
+int libPhantom_GetSlaveDeathCountMax();
+bool libPhantom_IsPlayerSlave(int p);
+int libPhantom_GetPlayerSlaveOwner(int p);
+void libPhantom_SetPlayerSlave(int p, int slaveTo);
+
+// Slave Callbacks (THREAD LOCAL)
+void libPhantom_SetEnslaveResult(bool b);
+bool libPhantom_GetEnslaveResult();
+int libPhantom_GetEnslavedPlayer();
+int libPhantom_GetEnslavingPlayer();
+void libPhantom_SetEnslavedPlayer(int p);
+void libPhantom_SetEnslavingPlayer(int p);
+// -- End Slave Callbacks
+
+
+// Deception Tab Management
+int libPhantom_GetPlayerDeceptionSupplyCapValue(int p);
+void libPhantom_PlayerHideSupplyCap(int p, bool hide);
+bool libPhantom_IsPlayerHidingSupplyCap(int p);
+bool libPhantom_CanPlayerHideSupplyCap(int p);
+
+void libPhantom_PingWorkers(int p);
+
+
+// Vision
+void libPhantom_SetVisionMapVisioned(int p, int target, bool visioned);
+void libPhantom_SaveVisionStatus();
+void libPhantom_DisableVision(bool b);
+
+
+//--------------------------------------
+// DIALOGS
+//--------------------------------------
+void libPhantom_ToggleAllianceDialog(int plr);
+void libPhantom_ToggleDeceptionDialog(int plr);
+
+// Builds a dialog with the roles of the game mode the plr voted for, asking him for his preference
+void libPhantom_BuildPreferredRoleDialog(int p);
+
+//--------------------------------------
+// Voting/Voting Helper Methods
+//--------------------------------------
+void libPhantom_ShowVotingDialog();
+void libPhantom_ResetGameModeVotes(int plr, int ignore);
+
+// Precondition: libPhantom_ShowVotingDialog() has been called and the voting period has
+// concluded.
+void libPhantom_TallyVotes();
+
+void libPhantom_ResetGameVariantGroup(int plr, int group, int ignore);
+bool libPhantom_VotingInProgress();
+
+// Iterates over all active players and assigns them to random roles based on the selected game mode.
+// Precondition: libPhantom_HasSufficientPlayers() will return true.
+void libPhantom_AssignPlayersToRoles();
+
+//-------------------------------------
+// DATA
+//-------------------------------------
+PhantomRole[c_phantomRole_MAX] libPhantom_Roles;
+PhantomGameMode[c_phantomGameMode_MAX] libPhantom_GameModes;
+PhantomGameVariant[c_phantomGameVariant_MAX] libPhantom_StandaloneGameVariants;
+PhantomGameVariantGroup[c_phantomGameVariantGroup_MAX] libPhantom_GameVariants;
+int libPhantom_MapFlags;
+int libPhantom_GameModeCurrent;
+int[c_phantomMaxPlayers] libPhantom_PlayerRoles;
+bool[c_phantomMaxPlayers] libPhantom_IsAlive;
+int libPhantom_GameTime;
+bool libPhantom_GameStarted;
+bool[c_phantomMaxPlayers] libPhantom_RolePrefferedChosen;
+int[c_phantomMaxPlayers] libPhantom_PreferredRole;
+playergroup[c_phantomRole_MAX] libPhantom_RolePreferredPlayers;
+int[3+c_phantomGameVariantGroup_MAX] libPhantom_VoteDialogs;
+bool[c_phantomMaxPlayers] libPhantom_BPlayerVoted;
+int[c_phantomMaxPlayers] libPhantom_AllianceDialog;
+int[c_phantomMaxPlayers] libPhantom_DeceptionDialog;
+int[c_phantomMaxPlayers][c_phantomMaxPlayers] libPhantom_AllianceCheckbox;
+int[c_phantomMaxPlayers][c_phantomMaxPlayers] libPhantom_VisionCheckbox;
+int[c_phantomMaxPlayers] libPhantom_InitialMinerals;
+int[c_phantomMaxPlayers] libPhantom_InitialGas;
+bool[c_phantomMaxPlayers] libPhantom_HidingSupplyCap;
+int[c_phantomMaxPlayers] libPhantom_DeceptionCheckbox;
+int[c_phantomMaxPlayers] libPhantom_ModeVotedFor;
+int[c_phantomMaxPlayers][c_phantomRole_MAX] libPhantom_RoleVoteButtons;
+int libPhantom_AnnouncementMessageDialog;
+bank[c_phantomMaxPlayers] libPhantom_PlayerBanks;
+int[c_phantomMaxPlayers] libPhantom_SlaveTo;
+int libPhantom_EnslavingPlayer;
+int libPhantom_EnslavedPlayer;
+bool libPhantom_EnslaveResult;
+int[c_phantomMaxPlayers] libPhantom_OriginalColor;
+int[c_phantomMaxPlayers] libPhantom_DeathCount;
+int libPhantom_SlaveLivesAllowed;
+
+bool[c_phantomMaxPlayers][c_phantomMaxPlayers] libPhantom_VisionMap;
+
+// DO NOT USE EXCEPT IN EVENT OF LEAVED PLAYER.
+int[c_phantomMaxPlayers] libPhantom_CurrentMinerals;
+int[c_phantomMaxPlayers] libPhantom_CurrentGas;
+
+// Galaxy Editor bug: Must end on newline or errors will be reported on the wrong line
