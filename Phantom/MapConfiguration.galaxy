@@ -19,6 +19,7 @@ void libPhantom_Configure()
 	libPhantom_Roles[c_phantomRole_Slayer].impersonateRole = -1;
 	libPhantom_Roles[c_phantomRole_Slayer].populationCap = 200;
 	libPhantom_Roles[c_phantomRole_Slayer].killBounty = 0.1;
+	libPhantom_Roles[c_phantomRole_Slayer].populationCapDeceptionImpersonate = -1;
 	
 	// Setup Paladin role
 	libPhantom_Roles[c_phantomRole_Paladin].roleName = "Paladin";
@@ -39,6 +40,7 @@ void libPhantom_Configure()
 	libPhantom_Roles[c_phantomRole_Paladin].impersonateRole = -1;
 	libPhantom_Roles[c_phantomRole_Paladin].populationCap = 200;
 	libPhantom_Roles[c_phantomRole_Paladin].resourceDrainRoleMask = (1 << c_phantomRole_Slayer) | (1 << c_phantomRole_KeeperOfLight) | (1 << c_phantomRole_KeeperOfDarkness);
+	libPhantom_Roles[c_phantomRole_Paladin].populationCapDeceptionImpersonate = -1;
 	
 	// Setup Phantom role
 	libPhantom_Roles[c_phantomRole_Phantom].roleName = "Phantom";
@@ -62,6 +64,7 @@ void libPhantom_Configure()
 	libPhantom_Roles[c_phantomRole_Phantom].broadcastReveal = true;
 	libPhantom_Roles[c_phantomRole_Phantom].impersonateRole = -1;
 	libPhantom_Roles[c_phantomRole_Phantom].populationCap = 200;
+	libPhantom_Roles[c_phantomRole_Phantom].populationCapDeceptionImpersonate = c_phantomRole_Slayer;
 	
 	// Setup Game Modes
 	libPhantom_GameModes[c_phantomGameMode_GoodVsEvil].modeName = "<c val=\"00ff00\">Good</c> vs <c val=\"ff0000\">Evil</c>";

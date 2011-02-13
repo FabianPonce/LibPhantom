@@ -30,6 +30,7 @@ struct PhantomRole
 	int maxCount;			// Absolute maximum number of this role. Unrelated to game role. (0 to ignore)
 	
 	int populationCap;	// Roles current population cap
+	int populationCapDeceptionImpersonate; 	// The role ID that will be used by the Deception tab to mask your population count as. (-1 disables use)
 	
 	fixed killBounty;	// Bounty as a percent of killed unit's cost to give to player. Ex: 0.10 = 10% of killed unit cost
 	
@@ -708,14 +709,24 @@ void libPhantom_RevivePlayer(int p)
 	MeleeInitUnitsForPlayer(p, PlayerRace(p), PlayerStartLocation(p));
 }
 
+int libPhantom_GetPlayerDeceptionSupplyCapValue(int p)
+{
+	int r = libPhantom_GetPlayerRole(p, false);
+	int impersonate = libPhantom_Roles[r].populationCapDeceptionImpersonate;
+	if( impersonate == -1 ) {
+		return -1;
+	}
+	return libPhantom_Roles[impersonate].populationCap;;
+}
+
 void libPhantom_PlayerHideSupplyCap(int p, bool hide)
 {
-	if(hide) {
-		if( 200 < libPhantom_Roles[libPhantom_GetPlayerRole(p, false)].populationCap ) {
-			PlayerModifyPropertyInt(p, c_playerPropSuppliesLimit, c_playerPropOperSetTo, 200);
-		}
+	int r = libPhantom_GetPlayerRole(p, false);
+	int cap = libPhantom_GetPlayerDeceptionSupplyCapValue(p);
+	if(hide && cap != -1) {
+		PlayerModifyPropertyInt(p, c_playerPropSuppliesLimit, c_playerPropOperSetTo, cap);
 	} else {
-		PlayerModifyPropertyInt(p, c_playerPropSuppliesLimit, c_playerPropOperSetTo, libPhantom_Roles[libPhantom_GetPlayerRole(p, false)].populationCap);
+		PlayerModifyPropertyInt(p, c_playerPropSuppliesLimit, c_playerPropOperSetTo, libPhantom_Roles[r].populationCap);
 	}
 	
 	libPhantom_HidingSupplyCap[p] = hide;
@@ -724,6 +735,13 @@ void libPhantom_PlayerHideSupplyCap(int p, bool hide)
 bool libPhantom_IsPlayerHidingSupplyCap(int p)
 {
 	return libPhantom_HidingSupplyCap[p];
+}
+
+bool libPhantom_CanPlayerHideSupplyCap(int p)
+{
+	int r = libPhantom_GetPlayerRole(p, false);
+	int cap = libPhantom_Roles[r].populationCapDeceptionImpersonate;
+	return cap != -1;
 }
 
 // Returns true if two players ROLES are allied.
@@ -1263,6 +1281,7 @@ void libPhantom_ToggleDeceptionDialog(int player)
 	int dialog;
 	int[6] items;
 	int i;
+	int cap;
 	
 	if( libPhantom_DeceptionDialog[player] )
 	{
@@ -1333,9 +1352,17 @@ void libPhantom_ToggleDeceptionDialog(int player)
 	items[5] = libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 300, 220, StringToText(""), Color(100,100,100), false, 1.0);
 	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
 	
-	libNtve_gf_CreateDialogItemLabel(dialog, 300, 35, c_anchorTopLeft, 50, 280, StringToText("Cap Population at 200"), Color(100,100,100), false, 1.0);
+	cap = libPhantom_GetPlayerDeceptionSupplyCapValue(player);
+	if( cap == -1 ) {
+		libNtve_gf_CreateDialogItemLabel(dialog, 300, 35, c_anchorTopLeft, 50, 280, StringToText("Cap Population at 200"), Color(100,100,100), false, 1.0);
+	} else {
+		libNtve_gf_CreateDialogItemLabel(dialog, 300, 35, c_anchorTopLeft, 50, 280, StringToText("Cap Population at " + IntToString(cap)), Color(100,100,100), false, 1.0);
+	}
 	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(player));
 	libPhantom_DeceptionCheckbox[player] = libNtve_gf_CreateDialogItemCheckBox(dialog, 35, 35, c_anchorTopLeft, 300, 270, StringToText(""), libPhantom_IsPlayerHidingSupplyCap(player));
+	if( !libPhantom_CanPlayerHideSupplyCap(player) ) {
+		DialogControlSetEnabled( DialogControlLastCreated(), PlayerGroupSingle(player), false );
+	}
 	
 	libNtve_gf_CreateDialogItemButton(dialog, 150, 50, c_anchorBottom, -75, 30, StringToText(""), StringToText("Submit"), "");
 	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerDeceptionDialogSubmitClicked"), player, DialogControlLastCreated(), c_triggerControlEventTypeClick);
@@ -1808,7 +1835,7 @@ void libPhantom_StrengthenRole(int r)
 	i = 0;
 	while(i < c_phantomMaxPlayers)
 	{
-		if( libPhantom_GetPlayerRole(i, false) == r ) 
+		if( libPhantom_GetPlayerRole(i, false) == r && !libPhantom_IsPlayerHidingSupplyCap(i) ) 
 		{
 			PlayerModifyPropertyInt(i, c_playerPropSuppliesLimit, c_playerPropOperAdd, libPhantom_Roles[r].supplyIncreaseAmt);
 		}
@@ -1816,6 +1843,21 @@ void libPhantom_StrengthenRole(int r)
 	}
 	
 	libPhantom_SendInformationMessageToAll("The " + libPhantom_BuildPluralRoleName(r) + " grow stronger.");
+	
+	// Interesting case: if a role is impersonating us in the deception tab and our population cap went up, theirs should be set to that.
+	i = 0;
+	while(i < c_phantomMaxPlayers)
+	{
+		if( libPhantom_IsPlayerHidingSupplyCap(i) && libPhantom_Roles[libPhantom_GetPlayerRole(i, false)].populationCapDeceptionImpersonate == r )
+		{
+			// We're hiding our supply cap and it should match role r's supply, which just increased!
+			// So let's manually set his to that. (But only if his role has MORE potential supply than this role!)
+			if( libPhantom_Roles[libPhantom_GetPlayerRole(i, false)].populationCap > libPhantom_Roles[r].populationCap ) {
+				PlayerModifyPropertyInt(i, c_playerPropSuppliesLimit, c_playerPropOperSetTo, libPhantom_Roles[r].populationCap);
+			}
+		}
+		i += 1;
+	}
 }
 
 // Builds a dialog with the roles of the game mode the player voted for, asking him for his preference
