@@ -1219,9 +1219,6 @@ void libPhantom_ToggleDeceptionDialog(int plr)
 	}
 	libNtve_gf_SetDialogItemStyle(DialogControlLastCreated(), "MercenaryPanel", PlayerGroupSingle(plr));
 	libPhantom_DeceptionCheckbox[plr] = libNtve_gf_CreateDialogItemCheckBox(dialog, 35, 35, c_anchorTopLeft, 300, 270, StringToText(""), libPhantom_IsPlayerHidingSupplyCap(plr));
-	if( !libPhantom_CanPlayerHideSupplyCap(plr) ) {
-		DialogControlSetEnabled( DialogControlLastCreated(), PlayerGroupSingle(plr), false );
-	}
 	
 	libNtve_gf_CreateDialogItemButton(dialog, 150, 50, c_anchorBottom, -75, 30, StringToText(""), StringToText("Submit"), "");
 	TriggerAddEventDialogControl(TriggerCreate("libPhantom_TriggerDeceptionDialogSubmitClicked"), plr, DialogControlLastCreated(), c_triggerControlEventTypeClick);
