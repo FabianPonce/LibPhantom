@@ -68,14 +68,25 @@ void libPhantom_LoadBanks()
 	}
 }
 
+void libPhantom_SetGameScoreRated(bool b)
+{
+	libPhantom_GameRated = b;
+}
+
 void libPhantom_PlayerIncreasePlayedGamesScore(int p)
 {
+	if(!libPhantom_GameRated) {
+		return;
+	}
 	BankValueSetFromInt(libPhantom_PlayerBanks[p], "Score", "Games", BankValueGetAsInt(libPhantom_PlayerBanks[p], "Score", "Games") + 1);
 	BankSave(libPhantom_PlayerBanks[p]);
 }
 
 void libPhantom_PlayerIncreaseWonGamesScore(int p)
 {
+	if(!libPhantom_GameRated) {
+		return;
+	}
 	BankValueSetFromInt(libPhantom_PlayerBanks[p], "Score", "Wins", BankValueGetAsInt(libPhantom_PlayerBanks[p], "Score", "Wins") + 1);
 	BankSave(libPhantom_PlayerBanks[p]);
 }
@@ -95,6 +106,129 @@ int libPhantom_PlayerGetWonGames(int p)
 int libPhantom_PlayerGetLostGames(int p)
 {
 	return libPhantom_PlayerGetPlayedGames(p) - libPhantom_PlayerGetWonGames(p);
+}
+
+void libPhantom_PlayerUpdatePendingRankChanges()
+{
+	int i = 0;
+	int pts;
+	
+	if(!libPhantom_GameRated) {
+		return;
+	}
+	
+	while(i < c_phantomMaxPlayers)
+	{
+		if( PlayerGroupHasPlayer(PlayerGroupActive(), i) ) {
+			// First, do we have existing points already off?!
+			pts = BankValueGetAsInt(libPhantom_PlayerBanks[i], "Score", "PendingRankChange");
+			if( pts != 0 ) {
+				libPhantom_PlayerIncreaseRanking(i, pts);
+			}
+			
+			// Calculate the score we're lose if we lose the game and save it, in case we leave.
+			pts = libPhantom_CalculateRankingChangeForTeam(libPhantom_Roles[libPhantom_GetPlayerRole(i,false)].allianceMask, false);
+			BankValueSetFromInt(libPhantom_PlayerBanks[i], "Score", "PendingRankChange", pts);
+			BankSave(libPhantom_PlayerBanks[i]);
+		}
+		i += 1;
+	}
+}
+
+int libPhantom_GetAverageTeamRanking(int team)
+{
+	int i = 0;
+	int avg = -1;
+	while(i < c_phantomMaxPlayers)
+	{
+		if( (libPhantom_Roles[libPhantom_GetPlayerRole(i,false)].allianceMask & team) != 0 )
+		{
+			if( avg == -1 ) {
+				avg = libPhantom_PlayerGetRanking(i);
+			} else {
+				avg = FixedToInt((libPhantom_PlayerGetRanking(i) + avg) * 0.5);
+			}
+		}
+		i += 1;
+	}
+	
+	return avg;
+}
+
+int libPhantom_GetAverageTeamRankingForEnemiesOfTeam(int team)
+{
+	int i = 0;
+	int avg = -1;
+	while(i < c_phantomMaxPlayers)
+	{
+		if( (libPhantom_Roles[libPhantom_GetPlayerRole(i,false)].allianceMask & team) == 0 )
+		{
+			if( avg == -1 ) {
+				avg = libPhantom_PlayerGetRanking(i);
+			} else {
+				avg = FixedToInt((libPhantom_PlayerGetRanking(i) + avg) * 0.5);
+			}
+		}
+		i += 1;
+	}
+	
+	return avg;
+}
+
+fixed libPhantom_CalculateWinChanceForTeam(int team)
+{
+	fixed ourTeamScore = IntToFixed(libPhantom_GetAverageTeamRanking(team));
+	fixed enemyTeamScore = IntToFixed(libPhantom_GetAverageTeamRankingForEnemiesOfTeam(team));
+	return  1.0 / (1.0 + Pow(10.0, (enemyTeamScore-ourTeamScore)/400.0) );
+}
+
+fixed libPhantom_CalculateWinChanceForEnemiesOfTeam(int team)
+{
+	fixed ourTeamScore = IntToFixed(libPhantom_GetAverageTeamRanking(team));
+	fixed enemyTeamScore = IntToFixed(libPhantom_GetAverageTeamRankingForEnemiesOfTeam(team));
+	return  1.0 / (1.0 + Pow(10.0, (ourTeamScore-enemyTeamScore)/400.0) );
+}
+
+
+int libPhantom_CalculateRankingChangeForTeam(int team, bool win)
+{
+	const fixed K = 32;
+	fixed winChanceUs = libPhantom_CalculateWinChanceForTeam(team);
+	fixed winChanceThem = libPhantom_CalculateWinChanceForEnemiesOfTeam(team);
+	if( win ) {
+		return FixedToInt(K * winChanceUs);
+	} else {
+		return -1 * FixedToInt(K * winChanceThem);
+	}
+}
+
+int libPhantom_PlayerGetRanking(int p)
+{
+	if( BankKeyExists(libPhantom_PlayerBanks[p], "Score", "Ranking") ) {
+		return BankValueGetAsInt(libPhantom_PlayerBanks[p], "Score", "Ranking");
+	} else {
+		return 1500; // Starting rank
+	}
+}
+
+void libPhantom_PlayerIncreaseRanking(int p, int mod)
+{
+	int ranking = libPhantom_PlayerGetRanking(p);
+	ranking += mod;
+	
+	if( ranking < 100 ) {
+		ranking = 100;
+	} else if( ranking > 2400 ) {
+		ranking = 2400;
+	}
+	
+	if(!libPhantom_GameRated) {
+		return;
+	}
+	
+	BankValueSetFromInt(libPhantom_PlayerBanks[p], "Score", "Ranking", ranking);
+	BankValueSetFromInt(libPhantom_PlayerBanks[p], "Score", "PendingRankChange", 0);
+	BankSave(libPhantom_PlayerBanks[p]);
 }
 
 void libPhantom_SetMapFlag(int flag)
@@ -398,6 +532,11 @@ void libPhantom_SetPlayerSlave(int p, int slaveTo)
 		PlayerSetColorIndex(p, libPhantom_OriginalColor[p], true);
 	} else {
 		PlayerSetColorIndex(p, PlayerGetColorIndex(slaveTo, false), true);
+	}
+	
+	// The rest of this pertains to active slaves. If we got unslaved, return.
+	if( slaveTo == 0 ) {
+		return;
 	}
 	
 	// Make slave and master ally each other.
@@ -860,6 +999,10 @@ void libPhantom_EliminatePlayer(int p, int killer)
 	if( libPhantom_IsPlayerSlave(p) && libPhantom_HasMapFlag(c_phantomMapFlag_LimitSlaveLives) ) {
 		libPhantom_SlaveDied(p);
 		livesRemaining = libPhantom_GetSlaveDeathCountMax() - libPhantom_GetSlaveDeathCount(p);
+		if( livesRemaining <= 0 ) {
+			// We're dead, restore our old color so we can talk and people can choose whether to unally/unvision/etc us.
+			libPhantom_SetPlayerSlave(p, 0);
+		}
 	} else {
 		livesRemaining = 1; // In case we're not a slave yet. need the next boolean if to pass as true.
 	}
@@ -929,31 +1072,40 @@ void libPhantom_EliminatePlayer(int p, int killer)
 	libPhantom_SendInformationMessageToAll(message);
 	
 	// Has the game ended?
-	if( libPhantom_IsGameOver() )
+	if( libPhantom_IsGameOver() && libPhantom_IsGameStarted() )
 	{
+		libPhantom_SetGameStarted(false);
+		
 		if( libPhantom_PlayerCountInRole(c_phantomRole_Phantom) == 0 ) {
 			libPhantom_SendAnnouncementMessageToAll( "The Phantoms have been defeated", 10 );
 		} else {
-			libPhantom_SendAnnouncementMessageToAll( "The Phantoms have conquered ", 10);
+			libPhantom_SendAnnouncementMessageToAll( "The Phantoms have conquered", 10);
 		}
 		CinematicFade( false, 5.0, c_fadeStyleNormal, Color(0, 0, 0), 0, false);
-		// Pause to allow for players to quickly chat before it ends.
-		Wait(10, c_timeReal);
 		
 		// Allow score viewing (must be done in separate loop)
+		// Update game ratings!
 		i = 0;
 		while(i < c_phantomMaxPlayers)
 		{
 			PlayerScoreValueEnableAll(i, true);
+			if( libPhantom_IsPlayerAlive(i) && !libPhantom_IsPlayerSlave(i) ) {
+				libPhantom_PlayerIncreaseRanking(i, libPhantom_CalculateRankingChangeForTeam(libPhantom_Roles[libPhantom_GetPlayerRole(i,false)].allianceMask, true));
+				libPhantom_PlayerIncreaseWonGamesScore(i);
+			} else if( PlayerGroupHasPlayer(PlayerGroupActive(), i) ){
+				libPhantom_PlayerIncreaseRanking(i, libPhantom_CalculateRankingChangeForTeam(libPhantom_Roles[libPhantom_GetPlayerRole(i,false)].allianceMask, false));
+			}
 			i += 1;
 		}
+		
+		// Pause to allow for players to quickly chat before it ends.
+		Wait(10, c_timeReal);
 		
 		i = 0;
 		while( i < c_phantomMaxPlayers )
 		{
 			if( libPhantom_IsPlayerAlive(i) && !libPhantom_IsPlayerSlave(i) ) {
 				GameOver(i, c_gameOverVictory, true, true);
-				libPhantom_PlayerIncreaseWonGamesScore(i);
 			} else if( PlayerGroupHasPlayer(PlayerGroupActive(), i) ){
 				GameOver(i, c_gameOverDefeat, true, true);
 			}
@@ -1093,9 +1245,9 @@ void libPhantom_ToggleAllianceDialog(int plr)
 			// Draw this dude's UI box.
 			libNtve_gf_CreateDialogItemLabel(dialog, 150, 35, c_anchorTopLeft, 50, CurrentY, PlayerName(i), libNtve_gf_ConvertPlayerColorToColor(PlayerGetColorIndex(i, false)), false, 1.0);
 			if( libPhantom_IsPlayerSlave(i) ) {
-				libNtve_gf_SetDialogItemTooltip(DialogControlLastCreated(), StringToText(enslaved + "Wins: " + IntToString(libPhantom_PlayerGetWonGames(i)) + "<n />Losses: " + IntToString(libPhantom_PlayerGetLostGames(i))), PlayerGroupSingle(plr));
+				libNtve_gf_SetDialogItemTooltip(DialogControlLastCreated(), StringToText(enslaved + "Ranking: " + IntToString(libPhantom_PlayerGetRanking(i)) + "<n />Wins: " + IntToString(libPhantom_PlayerGetWonGames(i)) + "<n />Losses: " + IntToString(libPhantom_PlayerGetLostGames(i))), PlayerGroupSingle(plr));
 			} else {
-				libNtve_gf_SetDialogItemTooltip(DialogControlLastCreated(), StringToText("Wins: " + IntToString(libPhantom_PlayerGetWonGames(i)) + "<n />Losses: " + IntToString(libPhantom_PlayerGetLostGames(i))), PlayerGroupSingle(plr));
+				libNtve_gf_SetDialogItemTooltip(DialogControlLastCreated(), StringToText("Ranking: " + IntToString(libPhantom_PlayerGetRanking(i)) + "<n />Wins: " + IntToString(libPhantom_PlayerGetWonGames(i)) + "<n />Losses: " + IntToString(libPhantom_PlayerGetLostGames(i))), PlayerGroupSingle(plr));
 			}
 			libPhantom_AllianceCheckbox[plr][i] = libNtve_gf_CreateDialogItemCheckBox(dialog, 35, 35, c_anchorTopLeft, 200, CurrentY-10, StringToText(""), false);
 			// Are we allied? If so, check the box!

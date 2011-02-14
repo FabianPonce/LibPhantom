@@ -257,6 +257,7 @@ bool libPhantom_TriggerMapInitialization(bool checkConds, bool runActions)
 	int seconds = 30;
 	
 	libPhantom_LoadBanks();
+	libPhantom_SetGameScoreRated(true);
 	libPhantom_EnsureUniquePlayerColors();
 	FogSetEnabled(false);
 	GameSetSpeedValue(c_gameSpeedFaster);
@@ -318,6 +319,8 @@ bool libPhantom_TriggerMapInitialization(bool checkConds, bool runActions)
 
 	// Activate the game modes based on everyone's votes.
 	libPhantom_TallyVotes();
+	
+	libPhantom_PlayerUpdatePendingRankChanges();
 
 	i = 0;
 	while(i < c_phantomMaxPlayers)

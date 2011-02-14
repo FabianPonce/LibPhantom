@@ -16,9 +16,30 @@ void libPhantom_InitLib();
 void libPhantom_LoadBanks();
 void libPhantom_BuildHelpMenuTips();
 
+// Sets whether the game's score is rated or not.
+void libPhantom_SetGameScoreRated(bool b);
+
 // Can be run to reset everyone's color to a unique and unshared color.
 // Counteracts a Blizzard bug where the in-game lobby shows non-existant colors.
 void libPhantom_EnsureUniquePlayerColors();
+
+//---------------------------------
+// RANKING FUNCTIONS
+//---------------------------------
+// Score
+void libPhantom_PlayerIncreasePlayedGamesScore(int p);
+void libPhantom_PlayerIncreaseWonGamesScore(int p);
+int libPhantom_PlayerGetPlayedGames(int p);
+int libPhantom_PlayerGetWonGames(int p);
+int libPhantom_PlayerGetLostGames(int p);
+int libPhantom_PlayerGetRanking(int p);
+void libPhantom_PlayerIncreaseRanking(int p, int mod);
+int libPhantom_GetAverageTeamRanking(int team);
+int libPhantom_GetAverageTeamRankingForEnemiesOfTeam(int team);
+fixed libPhantom_CalculateWinChanceForTeam(int team);
+fixed libPhantom_CalculateWinChanceForEnemiesOfTeam(int team);
+int libPhantom_CalculateRankingChangeForTeam(int team, bool win);
+void libPhantom_PlayerUpdatePendingRankChanges();
 
 //---------------------------------
 // OUTPUT FUNCTIONS
@@ -84,13 +105,6 @@ void libPhantom_RevealForRole(int r);
 //---------------------------------
 // PLAYER FUNCTIONS
 //---------------------------------
-
-// Score
-void libPhantom_PlayerIncreasePlayedGamesScore(int p);
-void libPhantom_PlayerIncreaseWonGamesScore(int p);
-int libPhantom_PlayerGetPlayedGames(int p);
-int libPhantom_PlayerGetWonGames(int p);
-int libPhantom_PlayerGetLostGames(int p);
 
 // Voting
 bool libPhantom_PlayerHasVoted(int p);
@@ -210,11 +224,14 @@ bool libPhantom_EnslaveResult;
 int[c_phantomMaxPlayers] libPhantom_OriginalColor;
 int[c_phantomMaxPlayers] libPhantom_DeathCount;
 int libPhantom_SlaveLivesAllowed;
+int[c_phantomMaxPlayers] libPhantom_PendingLossRatingChange;
 
 bool[c_phantomMaxPlayers][c_phantomMaxPlayers] libPhantom_VisionMap;
 
 // DO NOT USE EXCEPT IN EVENT OF LEAVED PLAYER.
 int[c_phantomMaxPlayers] libPhantom_CurrentMinerals;
 int[c_phantomMaxPlayers] libPhantom_CurrentGas;
+
+bool libPhantom_GameRated;
 
 // Galaxy Editor bug: Must end on newline or errors will be reported on the wrong line
