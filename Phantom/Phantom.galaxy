@@ -801,7 +801,12 @@ bool libPhantom_IsPlayerReadyToDie(int p)
 {
 	int structures = UnitGroupCount(UnitGroup(null, p, RegionEntireMap(), UnitFilter((1 << c_targetFilterStructure), 0, 0, 0), 0), c_unitCountAlive);
 	int workers = UnitGroupCount(UnitGroup(null, p, RegionEntireMap(), UnitFilter((1 << c_targetFilterWorker), 0, 0, 0), 0), c_unitCountAlive);
-	return (structures == 0 && workers == 0);
+	
+	if( !libPhantom_HasMapFlag(c_phantomMapFlag_EliminateWithWorkers) ) {
+		return (structures == 0 && workers == 0);
+	} else {
+		return (structures == 0);
+	}
 }
 
 // Returns whether a plr has no structures, and only worker units left.
