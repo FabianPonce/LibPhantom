@@ -40,10 +40,10 @@ void libPhantom_InitLib()
 	
 	// Setup trigger handles
 	TriggerAddEventUnitDied(TriggerCreate("libPhantom_TriggerUnitDied"), null);
-	TriggerAddEventTimeElapsed(TriggerCreate("libPhantom_TriggerMapInitialization"), 0, c_timeReal);
-	TriggerAddEventTimePeriodic(TriggerCreate("libPhantom_TriggerPeriodicResourceHandout"), 1, c_timeReal);
-	TriggerAddEventTimePeriodic(TriggerCreate("libPhantom_TriggerPeriodicMineralTracker"), 0, c_timeReal);
-	TriggerAddEventTimePeriodic(TriggerCreate("libPhantom_TriggerPeriodicGameLoop"), 1, c_timeReal);
+	TriggerAddEventTimeElapsed(TriggerCreate("libPhantom_TriggerMapInitialization"), 0, c_timeGame);
+	TriggerAddEventTimePeriodic(TriggerCreate("libPhantom_TriggerPeriodicResourceHandout"), 1, c_timeGame);
+	TriggerAddEventTimePeriodic(TriggerCreate("libPhantom_TriggerPeriodicMineralTracker"), 0, c_timeGame);
+	TriggerAddEventTimePeriodic(TriggerCreate("libPhantom_TriggerPeriodicGameLoop"), 1, c_timeGame);
 	TriggerAddEventPlayerLeft(TriggerCreate("libPhantom_TriggerPlayerLeft"), c_playerAny, c_gameResultUndecided);
 	TriggerAddEventUnitOrder(TriggerCreate("libPhantom_TriggerUnitIssuedOrder"), null, AbilityCommand("attack", 0));
 }
