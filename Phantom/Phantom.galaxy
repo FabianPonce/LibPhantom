@@ -275,12 +275,22 @@ void libPhantom_PlayerVoted(int p)
 
 bool libPhantom_IsGameStarted()
 {
-	return libPhantom_GameStarted;
+	return (libPhantom_GameState == c_phantomGameState_Started);
 }
 
-void libPhantom_SetGameStarted(bool s)
+void libPhantom_SetGameStarted()
 {
-	libPhantom_GameStarted = s;
+	libPhantom_GameState = c_phantomGameState_Started;
+}
+
+void libPhantom_SetGameEnded()
+{
+	libPhantom_GameState = c_phantomGameState_Ended;
+}
+
+bool libPhantom_IsGameEnded()
+{
+	return (libPhantom_GameState == c_phantomGameState_Ended);
 }
 
 int libPhantom_GetGameTime()
@@ -1088,9 +1098,9 @@ void libPhantom_EliminatePlayer(int p, int killer)
 	libPhantom_SendInformationMessageToAll(message);
 	
 	// Has the game ended?
-	if( libPhantom_IsGameOver() && libPhantom_IsGameStarted() )
-	{
-		libPhantom_SetGameStarted(false);
+	if( libPhantom_IsGameOver() )
+	{	
+		libPhantom_SetGameEnded();
 		
 		if( libPhantom_PlayerCountInRole(c_phantomRole_Phantom) == 0 ) {
 			libPhantom_SendAnnouncementMessageToAll( "The Phantoms have been defeated", 10 );

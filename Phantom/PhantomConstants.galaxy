@@ -30,6 +30,12 @@ const int c_phantomMapFlag_DoNotRevealSlaveRoles	= (1 << 2);
 const int c_phantomMapFlag_LimitSlaveLives			= (1 << 3);
 const int c_phantomMapFlag_EliminateWithWorkers		= (1 << 4);
 
+// Game State enum
+const int c_phantomGameState_Voting		= 0;
+const int c_phantomGameState_Started	= 1;
+const int c_phantomGameState_Ended		= 2;
+
+
 struct PhantomRole
 {
 	string roleName;	// The UI name for this role

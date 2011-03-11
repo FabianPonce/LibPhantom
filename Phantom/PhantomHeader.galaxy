@@ -66,7 +66,9 @@ void libPhantom_UnsetMapFlag(int flag);
 bool libPhantom_HasMapFlag(int flag);
 
 bool libPhantom_IsGameStarted();
-void libPhantom_SetGameStarted(bool s);
+void libPhantom_SetGameStarted();
+void libPhantom_SetGameEnded();
+bool libPhantom_IsGameEnded();
 int libPhantom_GetGameTime();
 
 // Returns the current selected game mode.
@@ -199,7 +201,6 @@ int libPhantom_GameModeCurrent;
 int[c_phantomMaxPlayers] libPhantom_PlayerRoles;
 bool[c_phantomMaxPlayers] libPhantom_IsAlive;
 int libPhantom_GameTime;
-bool libPhantom_GameStarted;
 bool[c_phantomMaxPlayers] libPhantom_RolePrefferedChosen;
 int[c_phantomMaxPlayers] libPhantom_PreferredRole;
 playergroup[c_phantomRole_MAX] libPhantom_RolePreferredPlayers;
@@ -226,6 +227,7 @@ int[c_phantomMaxPlayers] libPhantom_OriginalTeam;
 int[c_phantomMaxPlayers] libPhantom_DeathCount;
 int libPhantom_SlaveLivesAllowed;
 int[c_phantomMaxPlayers] libPhantom_PendingLossRatingChange;
+int libPhantom_GameState;
 
 bool[c_phantomMaxPlayers][c_phantomMaxPlayers] libPhantom_VisionMap;
 

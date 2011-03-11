@@ -389,7 +389,7 @@ bool libPhantom_TriggerGameModeSelected(bool checkConds, bool runActions)
 		i += 1;
 	}
 	
-	libPhantom_SetGameStarted(true);
+	libPhantom_SetGameStarted();
 	return true;
 }
 
@@ -399,6 +399,10 @@ bool libPhantom_TriggerUnitDied(bool checkConds, bool runActions)
 	int killingPlr = EventUnitDamageSourcePlayer();
 	int cost;
 	fixed bountyPct;
+	
+	if( !libPhantom_IsGameStarted() || libPhantom_IsGameEnded() ) {
+		return true;
+	}
 	
 	if( !(killingPlr == -1 || EventUnitDamageSourceUnit() == null || killingPlr == plr) )
 	{
@@ -421,9 +425,11 @@ bool libPhantom_TriggerUnitDied(bool checkConds, bool runActions)
 
 bool libPhantom_TriggerPlayerLeft(bool checkConds, bool runActions)
 {
-	if( !libPhantom_IsGameStarted() || !libPhantom_IsGameOver() ) {
-		libPhantom_EliminatePlayer(EventPlayer(), 0);
+	if( !libPhantom_IsGameStarted() || libPhantom_IsGameEnded() ) {
+		return true;
 	}
+	
+	libPhantom_EliminatePlayer(EventPlayer(), 0);
 	
 	// Okay, so, here's the deal: Blizzard decided to be stupid and give us no option to disable resource splitting. So we have to handle that shit.
 	// Bleh. So let's reset everyone's minerals to what they used to be.
