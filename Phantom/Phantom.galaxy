@@ -38,6 +38,13 @@ void libPhantom_InitLib()
 		i += 1;
 	}
 	
+	i = 0;
+	while(i < c_phantomMaxPlayers)
+	{
+		libPhantom_OriginalTeam[i] = -1;
+		i += 1;
+	}
+	
 	// Setup trigger handles
 	TriggerAddEventUnitDied(TriggerCreate("libPhantom_TriggerUnitDied"), null);
 	TriggerAddEventTimeElapsed(TriggerCreate("libPhantom_TriggerMapInitialization"), 0, c_timeGame);
@@ -123,6 +130,7 @@ void libPhantom_PlayerUpdatePendingRankChanges()
 			// First, do we have existing points already off?!
 			pts = BankValueGetAsInt(libPhantom_PlayerBanks[i], "Score", "PendingRankChange");
 			if( pts != 0 ) {
+				// Remove these points from the player as by leaving, they forfeit the previous game.
 				libPhantom_PlayerIncreaseRanking(i, pts);
 			}
 			
@@ -141,7 +149,7 @@ int libPhantom_GetAverageTeamRanking(int team)
 	int avg = -1;
 	while(i < c_phantomMaxPlayers)
 	{
-		if( (libPhantom_Roles[libPhantom_GetPlayerRole(i,false)].allianceMask & team) != 0 )
+		if( (libPhantom_OriginalTeam[i] & team) != 0 )
 		{
 			if( avg == -1 ) {
 				avg = libPhantom_PlayerGetRanking(i);
@@ -161,7 +169,7 @@ int libPhantom_GetAverageTeamRankingForEnemiesOfTeam(int team)
 	int avg = -1;
 	while(i < c_phantomMaxPlayers)
 	{
-		if( (libPhantom_Roles[libPhantom_GetPlayerRole(i,false)].allianceMask & team) == 0 )
+		if( (libPhantom_OriginalTeam[i] & team) == 0 )
 		{
 			if( avg == -1 ) {
 				avg = libPhantom_PlayerGetRanking(i);
@@ -448,6 +456,9 @@ int libPhantom_GetPlayerRole(int p, bool allowImpersonation)
 
 void libPhantom_SetPlayerRole(int p, int r)
 {
+	if( libPhantom_OriginalTeam[p] == -1 ) {
+		libPhantom_OriginalTeam[p] = libPhantom_Roles[r].allianceMask;
+	}
 	libPhantom_PlayerRoles[p] = r;
 	PlayerModifyPropertyInt(p, c_playerPropSuppliesLimit, c_playerPropOperSetTo, libPhantom_Roles[r].populationCap);
 }
@@ -1095,10 +1106,10 @@ void libPhantom_EliminatePlayer(int p, int killer)
 		{
 			PlayerScoreValueEnableAll(i, true);
 			if( libPhantom_IsPlayerAlive(i) && !libPhantom_IsPlayerSlave(i) ) {
-				libPhantom_PlayerIncreaseRanking(i, libPhantom_CalculateRankingChangeForTeam(libPhantom_Roles[libPhantom_GetPlayerRole(i,false)].allianceMask, true));
+				libPhantom_PlayerIncreaseRanking(i, libPhantom_CalculateRankingChangeForTeam(libPhantom_OriginalTeam[i], true));
 				libPhantom_PlayerIncreaseWonGamesScore(i);
 			} else if( PlayerGroupHasPlayer(PlayerGroupActive(), i) ){
-				libPhantom_PlayerIncreaseRanking(i, libPhantom_CalculateRankingChangeForTeam(libPhantom_Roles[libPhantom_GetPlayerRole(i,false)].allianceMask, false));
+				libPhantom_PlayerIncreaseRanking(i, libPhantom_CalculateRankingChangeForTeam(libPhantom_OriginalTeam[i], false));
 			}
 			i += 1;
 		}

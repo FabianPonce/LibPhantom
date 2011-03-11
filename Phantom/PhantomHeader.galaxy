@@ -222,6 +222,7 @@ int libPhantom_EnslavingPlayer;
 int libPhantom_EnslavedPlayer;
 bool libPhantom_EnslaveResult;
 int[c_phantomMaxPlayers] libPhantom_OriginalColor;
+int[c_phantomMaxPlayers] libPhantom_OriginalTeam;
 int[c_phantomMaxPlayers] libPhantom_DeathCount;
 int libPhantom_SlaveLivesAllowed;
 int[c_phantomMaxPlayers] libPhantom_PendingLossRatingChange;
