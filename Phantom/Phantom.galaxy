@@ -980,7 +980,7 @@ playergroup libPhantom_GetPlayersInRoles(int mask)
 // Use this method to eliminate a plr from the game.
 void libPhantom_EliminatePlayer(int p, int killer)
 {
-	string message;
+	text message;
 	int role;
 	int owner;
 	int livesRemaining;
@@ -1000,11 +1000,15 @@ void libPhantom_EliminatePlayer(int p, int killer)
 	// "A {role} has been eliminated."
 	role = libPhantom_GetPlayerRole(p, false);
 	if( libPhantom_IsPlayerSlave(p) && libPhantom_HasMapFlag(c_phantomMapFlag_DoNotRevealSlaveRoles) ) {
-		message = "A slave has been eliminated.";
+		message = StringToText("A slave has been eliminated.");
+	}
+	else if( libPhantom_HasMapFlag(c_phantomMapFlag_DoNotRevealRolesOnDeath) )
+	{
+		message = libPhantom_GetColoredPlayerName(p) + StringToText(" has been slain.");
 	}
 	else
 	{
-		message = "A " + libPhantom_BuildRoleName(role) + " has been eliminated.";
+		message = StringToText("A " + libPhantom_BuildRoleName(role) + " has been eliminated.");
 	}
 	
 	// Remove our resources, so we can't leave and have 'em split.
@@ -1014,7 +1018,11 @@ void libPhantom_EliminatePlayer(int p, int killer)
 	{
 		PlayerModifyPropertyInt(killer, c_playerPropMinerals, c_playerPropOperSetTo, 0);
 		PlayerModifyPropertyInt(killer, c_playerPropVespene, c_playerPropOperSetTo, 0);
-		libPhantom_SendInformationMessageToGroup(PlayerGroupSingle(killer), "Your resources have been drained for killing a " + libPhantom_BuildRoleName(libPhantom_GetPlayerRole(p, false)) + ".");
+		if( libPhantom_HasMapFlag(c_phantomMapFlag_DoNotRevealRolesOnDeath) ) {
+			libPhantom_SendInformationMessageToGroup(PlayerGroupSingle(killer), "Your resources have been drained.");
+		} else {
+			libPhantom_SendInformationMessageToGroup(PlayerGroupSingle(killer), "Your resources have been drained for killing a " + libPhantom_BuildRoleName(libPhantom_GetPlayerRole(p, false)) + ".");
+		}
 	}
 	
 	// Execute onDeath hook if available.
@@ -1051,11 +1059,11 @@ void libPhantom_EliminatePlayer(int p, int killer)
 			TriggerExecute( libPhantom_GameModes[libPhantom_GetCurrentGameMode()].onPlayerEnslaved, true, true);
 			if( libPhantom_GetEnslaveResult() ) {
 				libPhantom_SetPlayerSlave(p, owner);
-				message += " He will be reborn as a slave to his killer.";
+				message += StringToText(" He will be reborn as a slave to his killer.");
 			}
 		} else {
 			libPhantom_SetPlayerSlave(p, owner);
-			message += " He will be reborn as a slave to his killer.";
+			message += StringToText(" He will be reborn as a slave to his killer.");
 		}
 		libPhantom_RevivePlayer(p);
 		
@@ -1095,7 +1103,7 @@ void libPhantom_EliminatePlayer(int p, int killer)
 		}
 	}
 	
-	libPhantom_SendInformationMessageToAll(message);
+	libPhantom_SendInformationMessageToAllText(message);
 	
 	// Has the game ended?
 	if( libPhantom_IsGameOver() )
