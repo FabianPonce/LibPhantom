@@ -1957,14 +1957,17 @@ void libPhantom_RevealForRole(int r)
 		// We are revealing this role.
 		if( (revealMask & (1 << i)) != 0 )
 		{
-			p = libPhantom_GetPlayersInRole(i);
-			b = libPhantom_GetPlayersInRole(r);
-			if( i == r && PlayerGroupCount(p) == 2 )
+			p = libPhantom_GetPlayersInRole(i); // their role (to be revealed players)
+			b = libPhantom_GetPlayersInRole(r); // our role
+			if( i == r && PlayerGroupCount(p) == 1 ) {
+				message = StringToText("There are no other " + libPhantom_BuildPluralRoleName(i) + " alive.");
+				libPhantom_SendInformationMessageToGroupText(p, message);
+			} else if( i == r && PlayerGroupCount(p) == 2 )
 			{
 				message = StringToText("The other " + libPhantom_BuildRoleName(i) + " is: ");
 				libPhantom_SendInformationMessageToGroupText( PlayerGroupSingle(PlayerGroupPlayer(p, 1)), message + libPhantom_GetColoredPlayerName(PlayerGroupPlayer(p, 2)));
 				libPhantom_SendInformationMessageToGroupText( PlayerGroupSingle(PlayerGroupPlayer(p, 2)), message + libPhantom_GetColoredPlayerName(PlayerGroupPlayer(p, 1)));
-			} else {
+			} else if( PlayerGroupCount(p) > 0 ) {
 				message = StringToText("The " + libPhantom_BuildPluralRoleName(i) + " are: ");
 				PlayerGroupLoopBegin(b);
 				while( !PlayerGroupLoopDone() )
@@ -1992,6 +1995,9 @@ void libPhantom_RevealForRole(int r)
 					PlayerGroupLoopStep();
 				}
 				PlayerGroupLoopEnd();
+			} else if( PlayerGroupCount(p) == 0 ) {
+				message = StringToText("There are no " + libPhantom_BuildPluralRoleName(i) + " alive.");
+				libPhantom_SendInformationMessageToGroupText(p, message);
 			}
 			
 			if( libPhantom_Roles[r].broadcastReveal ) {
